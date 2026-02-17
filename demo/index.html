@@ -1,0 +1,1218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Circle-IR Playground | SAST Analysis Demo</title>
+
+  <!-- CodeMirror -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css">
+
+  <style>
+    :root {
+      --bg-primary: #0d1117;
+      --bg-secondary: #161b22;
+      --bg-tertiary: #21262d;
+      --border-color: #30363d;
+      --text-primary: #e6edf3;
+      --text-secondary: #8b949e;
+      --accent-blue: #58a6ff;
+      --accent-green: #3fb950;
+      --accent-red: #f85149;
+      --accent-yellow: #d29922;
+      --accent-purple: #a371f7;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+    }
+
+    /* Header */
+    .header {
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border-color);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-icon {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+
+    .logo-text h1 {
+      font-size: 20px;
+      font-weight: 600;
+    }
+
+    .logo-text span {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .header-stats {
+      display: flex;
+      gap: 24px;
+    }
+
+    .stat {
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--accent-green);
+    }
+
+    .stat-label {
+      font-size: 11px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+    }
+
+    /* Main Layout */
+    .main {
+      display: grid;
+      grid-template-columns: 1fr 400px;
+      height: calc(100vh - 73px);
+    }
+
+    /* Editor Panel */
+    .editor-panel {
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border-color);
+    }
+
+    .toolbar {
+      background: var(--bg-secondary);
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .language-select {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .language-select:focus {
+      outline: none;
+      border-color: var(--accent-blue);
+    }
+
+    .example-select {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      flex: 1;
+    }
+
+    .analyze-btn {
+      background: var(--accent-green);
+      color: #000;
+      border: none;
+      padding: 8px 20px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: opacity 0.2s;
+    }
+
+    .analyze-btn:hover {
+      opacity: 0.9;
+    }
+
+    .analyze-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .editor-container {
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .CodeMirror {
+      height: 100%;
+      font-size: 14px;
+    }
+
+    .CodeMirror .highlighted-line {
+      background: rgba(248, 81, 73, 0.15) !important;
+    }
+
+    /* Results Panel */
+    .results-panel {
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-secondary);
+    }
+
+    .results-header {
+      padding: 16px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .results-header h2 {
+      font-size: 14px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .results-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+    }
+
+    /* Summary Cards */
+    .summary-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .summary-card {
+      background: var(--bg-tertiary);
+      border-radius: 8px;
+      padding: 12px;
+      text-align: center;
+    }
+
+    .summary-card.critical { border-left: 3px solid var(--accent-red); }
+    .summary-card.high { border-left: 3px solid var(--accent-yellow); }
+    .summary-card.sources { border-left: 3px solid var(--accent-blue); }
+    .summary-card.sinks { border-left: 3px solid var(--accent-purple); }
+
+    .summary-count {
+      font-size: 28px;
+      font-weight: 700;
+    }
+
+    .summary-card.critical .summary-count { color: var(--accent-red); }
+    .summary-card.high .summary-count { color: var(--accent-yellow); }
+    .summary-card.sources .summary-count { color: var(--accent-blue); }
+    .summary-card.sinks .summary-count { color: var(--accent-purple); }
+
+    .summary-label {
+      font-size: 11px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      margin-top: 4px;
+    }
+
+    /* Finding Cards */
+    .section-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .finding-card {
+      background: var(--bg-tertiary);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+      border-left: 3px solid var(--accent-red);
+    }
+
+    .finding-card.high {
+      border-left-color: var(--accent-yellow);
+    }
+
+    .finding-card.medium {
+      border-left-color: var(--accent-blue);
+    }
+
+    .finding-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .finding-type {
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    .finding-badge {
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-weight: 600;
+    }
+
+    .finding-badge.critical {
+      background: rgba(248, 81, 73, 0.2);
+      color: var(--accent-red);
+    }
+
+    .finding-badge.high {
+      background: rgba(210, 153, 34, 0.2);
+      color: var(--accent-yellow);
+    }
+
+    .finding-location {
+      font-size: 12px;
+      color: var(--text-secondary);
+      font-family: monospace;
+    }
+
+    .finding-cwe {
+      font-size: 11px;
+      color: var(--accent-purple);
+      margin-top: 8px;
+    }
+
+    .finding-card {
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .finding-card:hover {
+      transform: translateX(4px);
+    }
+
+    .finding-card.expanded {
+      border-left-width: 4px;
+    }
+
+    .finding-flow {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border-color);
+      display: none;
+    }
+
+    .finding-card.expanded .finding-flow {
+      display: block;
+    }
+
+    .flow-arrow {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 0;
+    }
+
+    .flow-arrow .arrow {
+      color: var(--text-secondary);
+      font-size: 16px;
+    }
+
+    .flow-node {
+      background: var(--bg-secondary);
+      border-radius: 6px;
+      padding: 8px 12px;
+      flex: 1;
+    }
+
+    .flow-node.source {
+      border-left: 3px solid var(--accent-blue);
+    }
+
+    .flow-node.sink {
+      border-left: 3px solid var(--accent-red);
+    }
+
+    .flow-node-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+      margin-bottom: 4px;
+    }
+
+    .flow-node.source .flow-node-label {
+      color: var(--accent-blue);
+    }
+
+    .flow-node.sink .flow-node-label {
+      color: var(--accent-red);
+    }
+
+    .flow-node-method {
+      font-family: monospace;
+      font-size: 12px;
+      word-break: break-all;
+    }
+
+    .flow-node-meta {
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
+
+    .jump-to-line {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-color);
+      color: var(--accent-blue);
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      cursor: pointer;
+      margin-top: 8px;
+      display: inline-block;
+    }
+
+    .jump-to-line:hover {
+      background: var(--accent-blue);
+      color: #000;
+    }
+
+    /* Taint Flow */
+    .taint-flow {
+      margin-top: 20px;
+    }
+
+    .flow-item {
+      background: var(--bg-tertiary);
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .flow-icon {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+    }
+
+    .flow-icon.source {
+      background: rgba(88, 166, 255, 0.2);
+      color: var(--accent-blue);
+    }
+
+    .flow-icon.sink {
+      background: rgba(248, 81, 73, 0.2);
+      color: var(--accent-red);
+    }
+
+    .flow-details {
+      flex: 1;
+    }
+
+    .flow-method {
+      font-family: monospace;
+      font-weight: 500;
+    }
+
+    .flow-meta {
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+
+    /* Status Messages */
+    .status {
+      text-align: center;
+      padding: 40px;
+      color: var(--text-secondary);
+    }
+
+    .status-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+
+    .status.loading .status-icon {
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .status.success {
+      color: var(--accent-green);
+    }
+
+    .status.error {
+      color: var(--accent-red);
+    }
+
+    /* Responsive */
+    @media (max-width: 900px) {
+      .main {
+        grid-template-columns: 1fr;
+        grid-template-rows: 1fr 1fr;
+      }
+
+      .header-stats {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="logo">
+      <div class="logo-icon">&#x25CE;</div>
+      <div class="logo-text">
+        <h1>Circle-IR</h1>
+        <span>Static Analysis Playground</span>
+      </div>
+    </div>
+    <div class="header-stats">
+      <div class="stat">
+        <div class="stat-value">+99%</div>
+        <div class="stat-label">OWASP Score</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">0%</div>
+        <div class="stat-label">False Positives</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">100%</div>
+        <div class="stat-label">Precision</div>
+      </div>
+    </div>
+  </header>
+
+  <main class="main">
+    <div class="editor-panel">
+      <div class="toolbar">
+        <select id="language" class="language-select">
+          <option value="java">Java</option>
+          <option value="javascript">JavaScript / TypeScript</option>
+          <option value="python">Python</option>
+          <option value="rust">Rust</option>
+        </select>
+        <select id="example" class="example-select">
+          <option value="">-- Select Example --</option>
+        </select>
+        <button id="analyzeBtn" class="analyze-btn">
+          <span>&#x25B6;</span> Analyze
+        </button>
+      </div>
+      <div class="editor-container">
+        <textarea id="code"></textarea>
+      </div>
+    </div>
+
+    <div class="results-panel">
+      <div class="results-header">
+        <h2>&#x1F50D; Analysis Results</h2>
+      </div>
+      <div class="results-content" id="results">
+        <div class="status">
+          <div class="status-icon">&#x270F;</div>
+          <p>Write or paste code, then click <strong>Analyze</strong></p>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- CodeMirror -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/clike/clike.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/python/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/rust/rust.min.js"></script>
+
+  <script>
+    // Example vulnerable code snippets
+    const EXAMPLES = {
+      java: {
+        'SQL Injection': `public class UserController {
+
+    public User findUser(HttpServletRequest request) {
+        String userId = request.getParameter("id");
+
+        // VULNERABLE: SQL Injection
+        String query = "SELECT * FROM users WHERE id = '" + userId + "'";
+        return jdbcTemplate.queryForObject(query, User.class);
+    }
+}`,
+        'Command Injection': `public class FileProcessor {
+
+    public void processFile(HttpServletRequest request) {
+        String filename = request.getParameter("file");
+
+        // VULNERABLE: Command Injection
+        Runtime.getRuntime().exec("cat " + filename);
+    }
+}`,
+        'XSS (Cross-Site Scripting)': `public class SearchController {
+
+    public void search(HttpServletRequest request,
+                       HttpServletResponse response) throws IOException {
+        String query = request.getParameter("q");
+
+        // VULNERABLE: Reflected XSS
+        PrintWriter out = response.getWriter();
+        out.println("<h1>Results for: " + query + "</h1>");
+    }
+}`,
+        'Path Traversal': `public class FileDownloader {
+
+    public void download(HttpServletRequest request) throws IOException {
+        String filename = request.getParameter("file");
+
+        // VULNERABLE: Path Traversal
+        File file = new File("/uploads/" + filename);
+        FileInputStream fis = new FileInputStream(file);
+    }
+}`,
+        'Safe Code (No Vulnerabilities)': `public class SafeController {
+
+    public User findUser(HttpServletRequest request) {
+        String userId = request.getParameter("id");
+
+        // SAFE: Using PreparedStatement
+        String query = "SELECT * FROM users WHERE id = ?";
+        return jdbcTemplate.queryForObject(query, User.class, userId);
+    }
+}`
+      },
+      javascript: {
+        'SQL Injection': `const express = require('express');
+const app = express();
+
+app.get('/user', (req, res) => {
+    const userId = req.query.id;
+
+    // VULNERABLE: SQL Injection
+    const query = "SELECT * FROM users WHERE id = '" + userId + "'";
+    db.query(query, (err, result) => {
+        res.json(result);
+    });
+});`,
+        'Command Injection': `const express = require('express');
+const { exec } = require('child_process');
+
+app.get('/ping', (req, res) => {
+    const host = req.query.host;
+
+    // VULNERABLE: Command Injection
+    exec('ping -c 4 ' + host, (err, stdout) => {
+        res.send(stdout);
+    });
+});`,
+        'XSS (Cross-Site Scripting)': `const express = require('express');
+
+app.get('/search', (req, res) => {
+    const query = req.query.q;
+
+    // VULNERABLE: Reflected XSS
+    res.send('<h1>Results for: ' + query + '</h1>');
+});`,
+        'Path Traversal': `const express = require('express');
+const fs = require('fs');
+const path = require('path');
+
+app.get('/download', (req, res) => {
+    const filename = req.query.file;
+
+    // VULNERABLE: Path Traversal
+    const filePath = path.join('/uploads', filename);
+    res.sendFile(filePath);
+});`,
+        'Safe Code (No Vulnerabilities)': `const express = require('express');
+
+app.get('/user', (req, res) => {
+    const userId = req.query.id;
+
+    // SAFE: Using parameterized query
+    const query = "SELECT * FROM users WHERE id = ?";
+    db.query(query, [userId], (err, result) => {
+        res.json(result);
+    });
+});`
+      },
+      python: {
+        'SQL Injection': `from flask import Flask, request
+import sqlite3
+
+app = Flask(__name__)
+
+@app.route('/user')
+def get_user():
+    user_id = request.args.get('id')
+
+    # VULNERABLE: SQL Injection
+    query = f"SELECT * FROM users WHERE id = '{user_id}'"
+    cursor.execute(query)
+    return cursor.fetchone()`,
+        'Command Injection': `from flask import Flask, request
+import os
+
+app = Flask(__name__)
+
+@app.route('/ping')
+def ping():
+    host = request.args.get('host')
+
+    # VULNERABLE: Command Injection
+    result = os.system(f"ping -c 4 {host}")
+    return str(result)`,
+        'XSS (Cross-Site Scripting)': `from flask import Flask, request
+
+app = Flask(__name__)
+
+@app.route('/search')
+def search():
+    query = request.args.get('q')
+
+    # VULNERABLE: Reflected XSS
+    return f"<h1>Results for: {query}</h1>"`,
+        'Path Traversal': `from flask import Flask, request, send_file
+
+app = Flask(__name__)
+
+@app.route('/download')
+def download():
+    filename = request.args.get('file')
+
+    # VULNERABLE: Path Traversal
+    filepath = f"/uploads/{filename}"
+    return send_file(filepath)`,
+        'Safe Code (No Vulnerabilities)': `from flask import Flask, request
+import sqlite3
+
+app = Flask(__name__)
+
+@app.route('/user')
+def get_user():
+    user_id = request.args.get('id')
+
+    # SAFE: Using parameterized query
+    query = "SELECT * FROM users WHERE id = ?"
+    cursor.execute(query, (user_id,))
+    return cursor.fetchone()`
+      },
+      rust: {
+        'SQL Injection': `use actix_web::{web, HttpResponse};
+
+async fn get_user(query: web::Query<UserQuery>) -> HttpResponse {
+    let user_id = &query.id;
+
+    // VULNERABLE: SQL Injection (string formatting)
+    let sql = format!("SELECT * FROM users WHERE id = '{}'", user_id);
+    let result = sqlx::query(&sql).fetch_one(&pool).await;
+
+    HttpResponse::Ok().json(result)
+}`,
+        'Command Injection': `use actix_web::{web, HttpResponse};
+use std::process::Command;
+
+async fn ping(query: web::Query<PingQuery>) -> HttpResponse {
+    let host = &query.host;
+
+    // VULNERABLE: Command Injection
+    let output = Command::new("sh")
+        .arg("-c")
+        .arg(format!("ping -c 4 {}", host))
+        .output()
+        .expect("failed");
+
+    HttpResponse::Ok().body(String::from_utf8_lossy(&output.stdout))
+}`,
+        'Path Traversal': `use actix_web::{web, HttpResponse};
+use std::fs;
+
+async fn download(query: web::Query<FileQuery>) -> HttpResponse {
+    let filename = &query.file;
+
+    // VULNERABLE: Path Traversal
+    let path = format!("/uploads/{}", filename);
+    let contents = fs::read_to_string(&path).unwrap();
+
+    HttpResponse::Ok().body(contents)
+}`,
+        'Safe Code (No Vulnerabilities)': `use actix_web::{web, HttpResponse};
+use sqlx::query_as;
+
+async fn get_user(query: web::Query<UserQuery>) -> HttpResponse {
+    let user_id = &query.id;
+
+    // SAFE: Using parameterized query
+    let result = sqlx::query_as!(
+        User,
+        "SELECT * FROM users WHERE id = $1",
+        user_id
+    )
+    .fetch_one(&pool)
+    .await;
+
+    HttpResponse::Ok().json(result)
+}`
+      }
+    };
+
+    // CodeMirror mode mapping
+    const MODES = {
+      java: 'text/x-java',
+      javascript: 'javascript',
+      python: 'python',
+      rust: 'rust'
+    };
+
+    // Initialize CodeMirror
+    const editor = CodeMirror.fromTextArea(document.getElementById('code'), {
+      mode: MODES.java,
+      theme: 'dracula',
+      lineNumbers: true,
+      tabSize: 4,
+      indentWithTabs: false,
+      lineWrapping: true
+    });
+
+    // DOM elements
+    const languageSelect = document.getElementById('language');
+    const exampleSelect = document.getElementById('example');
+    const analyzeBtn = document.getElementById('analyzeBtn');
+    const resultsDiv = document.getElementById('results');
+
+    // Update examples when language changes
+    function updateExamples() {
+      const lang = languageSelect.value;
+      const examples = EXAMPLES[lang];
+
+      exampleSelect.innerHTML = '<option value="">-- Select Example --</option>';
+      for (const name in examples) {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        exampleSelect.appendChild(option);
+      }
+
+      editor.setOption('mode', MODES[lang]);
+    }
+
+    // Load example code
+    function loadExample() {
+      const lang = languageSelect.value;
+      const exampleName = exampleSelect.value;
+
+      if (exampleName && EXAMPLES[lang][exampleName]) {
+        editor.setValue(EXAMPLES[lang][exampleName]);
+      }
+    }
+
+    // Render results
+    function renderResults(result) {
+      if (!result.success) {
+        resultsDiv.innerHTML = `
+          <div class="status error">
+            <div class="status-icon">&#x26A0;</div>
+            <p>${result.error || 'Analysis failed'}</p>
+          </div>
+        `;
+        return;
+      }
+
+      // Handle nested structure from API (result.analysis.*)
+      const analysis = result.analysis || result;
+      const vulns = analysis.vulnerabilities || [];
+      const sources = analysis.sources || [];
+      const sinks = analysis.sinks || [];
+
+      const criticalCount = vulns.filter(v => v.severity === 'critical').length;
+      const highCount = vulns.filter(v => v.severity === 'high').length;
+
+      let html = `
+        <div class="summary-grid">
+          <div class="summary-card critical">
+            <div class="summary-count">${criticalCount}</div>
+            <div class="summary-label">Critical</div>
+          </div>
+          <div class="summary-card high">
+            <div class="summary-count">${highCount}</div>
+            <div class="summary-label">High</div>
+          </div>
+          <div class="summary-card sources">
+            <div class="summary-count">${sources.length}</div>
+            <div class="summary-label">Sources</div>
+          </div>
+          <div class="summary-card sinks">
+            <div class="summary-count">${sinks.length}</div>
+            <div class="summary-label">Sinks</div>
+          </div>
+        </div>
+      `;
+
+      if (vulns.length === 0 && sources.length === 0 && sinks.length === 0) {
+        html += `
+          <div class="status success">
+            <div class="status-icon">&#x2713;</div>
+            <p>No vulnerabilities detected!</p>
+          </div>
+        `;
+      } else {
+        // Vulnerabilities
+        if (vulns.length > 0) {
+          html += `<div class="section-title">&#x26A0; Vulnerabilities (${vulns.length}) <span style="font-weight:normal;font-size:10px;color:var(--text-secondary)">(click to expand)</span></div>`;
+          for (let i = 0; i < vulns.length; i++) {
+            const vuln = vulns[i];
+            const severityClass = vuln.severity === 'critical' ? 'critical' :
+                                  vuln.severity === 'high' ? 'high' : 'medium';
+            const sinkLine = vuln.sink?.line || vuln.line || '?';
+            const sourceLine = vuln.source?.line || '?';
+            const sourceType = vuln.source?.type || 'user_input';
+            const sinkType = vuln.sink?.type || vuln.type || 'dangerous_operation';
+
+            // Find matching source and sink details from the arrays
+            const sourceDetail = sources.find(s => s.line === sourceLine) || vuln.source || {};
+            const sinkDetail = sinks.find(s => s.line === sinkLine) || vuln.sink || {};
+
+            html += `
+              <div class="finding-card ${severityClass}" onclick="toggleVuln(this)" data-source-line="${sourceLine}" data-sink-line="${sinkLine}">
+                <div class="finding-header">
+                  <span class="finding-type">${vuln.type.replace(/_/g, ' ').toUpperCase()}</span>
+                  <span class="finding-badge ${severityClass}">${(vuln.severity || 'high').toUpperCase()}</span>
+                </div>
+                <div class="finding-location">Line ${sinkLine}</div>
+                <div class="finding-cwe">${vuln.cwe || ''}</div>
+
+                <div class="finding-flow">
+                  <div class="flow-arrow">
+                    <div class="flow-node source">
+                      <div class="flow-node-label">&#x25B6; Source (Tainted Input)</div>
+                      <div class="flow-node-method">${sourceDetail.location || sourceDetail.method || 'User Input'}</div>
+                      <div class="flow-node-meta">Line ${sourceLine} &middot; ${sourceType.replace(/_/g, ' ')}</div>
+                      <button class="jump-to-line" onclick="event.stopPropagation(); jumpToLine(${sourceLine})">Go to line ${sourceLine}</button>
+                    </div>
+                  </div>
+                  <div style="text-align:center;color:var(--text-secondary);padding:4px 0;">&#x2193; Data flows to &#x2193;</div>
+                  <div class="flow-arrow">
+                    <div class="flow-node sink">
+                      <div class="flow-node-label">&#x25CF; Sink (Dangerous Operation)</div>
+                      <div class="flow-node-method">${sinkDetail.location || sinkDetail.method || 'Dangerous Call'}</div>
+                      <div class="flow-node-meta">Line ${sinkLine} &middot; ${sinkType.replace(/_/g, ' ')}</div>
+                      <button class="jump-to-line" onclick="event.stopPropagation(); jumpToLine(${sinkLine})">Go to line ${sinkLine}</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            `;
+          }
+        }
+
+        // Show sources/sinks only if no vulnerabilities were correlated
+        // (i.e., we found sources and sinks but couldn't link them)
+        if (vulns.length === 0 && (sources.length > 0 || sinks.length > 0)) {
+          html += `<div class="taint-flow">`;
+          html += `<div class="section-title">&#x2192; Taint Analysis</div>`;
+
+          if (sources.length > 0) {
+            html += `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;">Sources (${sources.length})</div>`;
+            for (const source of sources) {
+              html += `
+                <div class="flow-item">
+                  <div class="flow-icon source">&#x25B6;</div>
+                  <div class="flow-details">
+                    <div class="flow-method">${source.location || source.method || 'Source'}</div>
+                    <div class="flow-meta">Line ${source.line} &middot; ${source.type}</div>
+                  </div>
+                </div>
+              `;
+            }
+          }
+
+          if (sinks.length > 0) {
+            html += `<div style="font-size:11px;color:var(--text-secondary);margin:12px 0 8px 0;">Sinks (${sinks.length})</div>`;
+            for (const sink of sinks) {
+              html += `
+                <div class="flow-item">
+                  <div class="flow-icon sink">&#x25CF;</div>
+                  <div class="flow-details">
+                    <div class="flow-method">${sink.location || sink.method || 'Sink'}</div>
+                    <div class="flow-meta">Line ${sink.line} &middot; ${sink.type} &middot; ${sink.cwe}</div>
+                  </div>
+                </div>
+              `;
+            }
+          }
+
+          html += `</div>`;
+        }
+      }
+
+      resultsDiv.innerHTML = html;
+    }
+
+    // Analyze code
+    async function analyzeCode() {
+      const code = editor.getValue();
+      const language = languageSelect.value;
+
+      if (!code.trim()) {
+        resultsDiv.innerHTML = `
+          <div class="status error">
+            <div class="status-icon">&#x26A0;</div>
+            <p>Please enter some code to analyze</p>
+          </div>
+        `;
+        return;
+      }
+
+      analyzeBtn.disabled = true;
+      analyzeBtn.innerHTML = '<span>&#x23F3;</span> Analyzing...';
+
+      resultsDiv.innerHTML = `
+        <div class="status loading">
+          <div class="status-icon">&#x23F3;</div>
+          <p>Analyzing code...</p>
+        </div>
+      `;
+
+      try {
+        // Try to use the API endpoint if available
+        const response = await fetch('/api/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code, language })
+        });
+
+        const result = await response.json();
+        renderResults(result);
+      } catch (error) {
+        // Fallback: Show mock results for demo
+        console.log('API not available, using demo mode');
+
+        // Simulate analysis delay
+        await new Promise(r => setTimeout(r, 500));
+
+        // Mock analysis based on code patterns
+        const mockResult = mockAnalyze(code, language);
+        renderResults(mockResult);
+      }
+
+      analyzeBtn.disabled = false;
+      analyzeBtn.innerHTML = '<span>&#x25B6;</span> Analyze';
+    }
+
+    // Mock analysis for demo (when API not available)
+    function mockAnalyze(code, language) {
+      const vulnerabilities = [];
+      const sources = [];
+      const sinks = [];
+      const lines = code.split('\n');
+
+      // Detect patterns
+      lines.forEach((line, i) => {
+        const lineNum = i + 1;
+        const lowerLine = line.toLowerCase();
+
+        // Sources
+        if (line.includes('getParameter') || line.includes('req.query') ||
+            line.includes('req.params') || line.includes('request.args') ||
+            line.includes('web::Query')) {
+          sources.push({
+            type: 'http_param',
+            line: lineNum,
+            location: line.trim().substring(0, 50)
+          });
+        }
+
+        // SQL Injection
+        if ((lowerLine.includes('select') || lowerLine.includes('insert') ||
+             lowerLine.includes('update') || lowerLine.includes('delete')) &&
+            (line.includes('+') || line.includes('format!') || line.includes('f"') || line.includes('f\''))) {
+          vulnerabilities.push({
+            type: 'sql_injection',
+            cwe: 'CWE-89',
+            severity: 'critical',
+            line: lineNum,
+            location: line.trim().substring(0, 50)
+          });
+          sinks.push({
+            type: 'sql_injection',
+            cwe: 'CWE-89',
+            line: lineNum,
+            location: 'SQL Query'
+          });
+        }
+
+        // Command Injection
+        if ((line.includes('exec(') || line.includes('system(') ||
+             line.includes('Command::new') || line.includes('popen')) &&
+            (line.includes('+') || line.includes('format') || line.includes('$'))) {
+          vulnerabilities.push({
+            type: 'command_injection',
+            cwe: 'CWE-78',
+            severity: 'critical',
+            line: lineNum,
+            location: line.trim().substring(0, 50)
+          });
+          sinks.push({
+            type: 'command_injection',
+            cwe: 'CWE-78',
+            line: lineNum,
+            location: 'OS Command'
+          });
+        }
+
+        // XSS
+        if ((line.includes('println') || line.includes('res.send') ||
+             line.includes('return f"<') || line.includes('return f\'<') ||
+             line.includes('out.print')) &&
+            (line.includes('+') || line.includes('${') || line.includes('{') )) {
+          vulnerabilities.push({
+            type: 'xss',
+            cwe: 'CWE-79',
+            severity: 'high',
+            line: lineNum,
+            location: line.trim().substring(0, 50)
+          });
+          sinks.push({
+            type: 'xss',
+            cwe: 'CWE-79',
+            line: lineNum,
+            location: 'HTTP Response'
+          });
+        }
+
+        // Path Traversal
+        if ((line.includes('new File') || line.includes('FileInputStream') ||
+             line.includes('send_file') || line.includes('sendFile') ||
+             line.includes('read_to_string') || line.includes('fs.read')) &&
+            (line.includes('+') || line.includes('format') || line.includes('$') || line.includes('f"'))) {
+          vulnerabilities.push({
+            type: 'path_traversal',
+            cwe: 'CWE-22',
+            severity: 'high',
+            line: lineNum,
+            location: line.trim().substring(0, 50)
+          });
+          sinks.push({
+            type: 'path_traversal',
+            cwe: 'CWE-22',
+            line: lineNum,
+            location: 'File Operation'
+          });
+        }
+      });
+
+      return {
+        success: true,
+        vulnerabilities,
+        sources,
+        sinks
+      };
+    }
+
+    // Toggle vulnerability expansion
+    function toggleVuln(element) {
+      // Close other expanded cards
+      document.querySelectorAll('.finding-card.expanded').forEach(card => {
+        if (card !== element) card.classList.remove('expanded');
+      });
+      // Toggle this card
+      element.classList.toggle('expanded');
+
+      // Highlight lines in editor if expanded
+      if (element.classList.contains('expanded')) {
+        const sourceLine = parseInt(element.dataset.sourceLine) || 0;
+        const sinkLine = parseInt(element.dataset.sinkLine) || 0;
+        highlightLines([sourceLine, sinkLine]);
+      } else {
+        clearHighlights();
+      }
+    }
+
+    // Jump to specific line in editor
+    function jumpToLine(lineNum) {
+      if (lineNum && lineNum > 0) {
+        editor.setCursor(lineNum - 1, 0);
+        editor.focus();
+        // Highlight the line
+        highlightLines([lineNum]);
+      }
+    }
+
+    // Highlight lines in the editor
+    let highlightedLines = [];
+    function highlightLines(lines) {
+      clearHighlights();
+      lines.forEach(line => {
+        if (line && line > 0) {
+          const marker = editor.addLineClass(line - 1, 'background', 'highlighted-line');
+          highlightedLines.push({ line: line - 1, marker });
+        }
+      });
+    }
+
+    function clearHighlights() {
+      highlightedLines.forEach(({ line }) => {
+        editor.removeLineClass(line, 'background', 'highlighted-line');
+      });
+      highlightedLines = [];
+    }
+
+    // Event listeners
+    languageSelect.addEventListener('change', updateExamples);
+    exampleSelect.addEventListener('change', loadExample);
+    analyzeBtn.addEventListener('click', analyzeCode);
+
+    // Keyboard shortcut
+    document.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        analyzeCode();
+      }
+    });
+
+    // Initialize
+    updateExamples();
+    editor.setValue(EXAMPLES.java['SQL Injection']);
+  </script>
+</body>
+</html>

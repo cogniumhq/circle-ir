@@ -1,0 +1,169 @@
+/**
+ * Circle-IR TypeScript Library
+ *
+ * A universal library for static analysis and taint tracking.
+ */
+
+// Main analyzer
+export {
+  initAnalyzer,
+  analyze,
+  analyzeForAPI,
+  isAnalyzerInitialized,
+  resetAnalyzer,
+  type AnalyzerOptions,
+} from './analyzer.js';
+
+// Types
+export type {
+  // Core IR types
+  CircleIR,
+  Meta,
+  TypeInfo,
+  MethodInfo,
+  ParameterInfo,
+  FieldInfo,
+  CallInfo,
+  ArgumentInfo,
+  CallResolution,
+  CFG,
+  CFGBlock,
+  CFGEdge,
+  DFG,
+  DFGDef,
+  DFGUse,
+  DFGChain,
+  Taint,
+  TaintSource,
+  TaintSink,
+  TaintSanitizer,
+  ImportInfo,
+  ExportInfo,
+  UnresolvedItem,
+  Enriched,
+  EnrichedFunction,
+  ResolvedCall,
+  Finding,
+  TaintHop,
+  Vulnerability,
+  AnalysisResponse,
+
+  // Utility types
+  SourceType,
+  SinkType,
+  Severity,
+
+  // Project-level types
+  ProjectAnalysis,
+  ProjectMeta,
+  FileAnalysis,
+  TypeHierarchy,
+  ClassHierarchyInfo,
+  InterfaceHierarchyInfo,
+  CrossFileCall,
+  ArgMapping,
+  TaintPath,
+} from './types/index.js';
+
+// Config types
+export type {
+  SourceConfig,
+  SinkConfig,
+  TaintConfig,
+  SourcePattern,
+  SinkPattern,
+  SanitizerPattern,
+} from './types/config.js';
+
+// Core utilities (for advanced usage)
+export {
+  initParser,
+  parse,
+  walkTree,
+  findNodes,
+  findAncestor,
+  getNodeText,
+  collectAllNodes,
+  type SupportedLanguage,
+  type SyntaxNode,
+  type Node,
+  type NodeCache,
+  type Tree,
+} from './core/index.js';
+
+// Core extractors
+export {
+  extractMeta,
+  extractTypes,
+  extractCalls,
+  extractImports,
+  extractExports,
+  buildCFG,
+  buildDFG,
+} from './core/index.js';
+
+// Analysis utilities
+export {
+  getDefaultConfig,
+  createTaintConfig,
+  analyzeTaint,
+  detectUnresolved,
+  propagateTaint,
+  generateFindings,
+  analyzeConstantPropagation,
+  ConstantPropagator,
+  isKnown,
+  createUnknown,
+  getNodeLine,
+  DEFAULT_SOURCES,
+  DEFAULT_SINKS,
+  DEFAULT_SANITIZERS,
+  type ConstantValue,
+  type ConstantPropagatorResult,
+  type TaintPropagationResult,
+  type TaintedVariable,
+  type TaintFlow,
+} from './analysis/index.js';
+
+// Rule definitions
+export {
+  getRuleInfo,
+  RULE_DEFINITIONS,
+  type RuleInfo,
+} from './analysis/rules.js';
+
+// Resolution utilities
+export {
+  TypeHierarchyResolver,
+  createWithJdkTypes,
+  SymbolTable,
+  buildSymbolTable,
+  CrossFileResolver,
+  buildCrossFileResolver,
+} from './resolution/index.js';
+
+// Language plugins
+export {
+  getLanguageRegistry,
+  registerLanguage,
+  getLanguagePlugin,
+  getLanguageForFile,
+  detectLanguage,
+  isLanguageSupported,
+  registerBuiltinPlugins,
+  JavaPlugin,
+  JavaScriptPlugin,
+  PythonPlugin,
+  RustPlugin,
+  BaseLanguagePlugin,
+} from './languages/index.js';
+
+export type {
+  LanguagePlugin,
+  LanguageRegistry,
+  LanguageNodeTypes,
+  ExtractionContext,
+  FrameworkInfo,
+  TaintSourcePattern,
+  TaintSinkPattern,
+} from './languages/index.js';

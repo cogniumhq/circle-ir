@@ -1,0 +1,603 @@
+/**
+ * Tests for Language Plugin Implementations
+ */
+
+import { describe, it, expect, beforeAll } from 'vitest';
+import {
+  JavaPlugin,
+  JavaScriptPlugin,
+  PythonPlugin,
+  RustPlugin,
+  registerBuiltinPlugins,
+} from '../../src/languages/plugins/index.js';
+import { getLanguageRegistry, getLanguagePlugin } from '../../src/languages/registry.js';
+
+describe('Language Plugins', () => {
+  beforeAll(() => {
+    registerBuiltinPlugins();
+  });
+
+  describe('JavaPlugin', () => {
+    const plugin = new JavaPlugin();
+
+    it('should have correct id', () => {
+      expect(plugin.id).toBe('java');
+    });
+
+    it('should handle .java files', () => {
+      expect(plugin.canHandle('Test.java')).toBe(true);
+      expect(plugin.canHandle('/path/to/Test.java')).toBe(true);
+      expect(plugin.canHandle('Test.js')).toBe(false);
+    });
+
+    it('should have node type mappings', () => {
+      expect(plugin.nodeTypes.classDeclaration).toContain('class_declaration');
+      expect(plugin.nodeTypes.methodDeclaration).toContain('method_declaration');
+      expect(plugin.nodeTypes.annotation).toContain('marker_annotation');
+    });
+
+    it('should have builtin sources', () => {
+      const sources = plugin.getBuiltinSources();
+      expect(sources.length).toBeGreaterThan(0);
+
+      // Check for Spring annotations
+      const requestParam = sources.find(s => s.annotation === 'RequestParam');
+      expect(requestParam).toBeDefined();
+      expect(requestParam?.type).toBe('http_param');
+
+      const requestBody = sources.find(s => s.annotation === 'RequestBody');
+      expect(requestBody).toBeDefined();
+      expect(requestBody?.type).toBe('http_body');
+
+      // Check for Servlet API
+      const getParameter = sources.find(s => s.method === 'getParameter');
+      expect(getParameter).toBeDefined();
+      expect(getParameter?.type).toBe('http_param');
+    });
+
+    it('should have builtin sinks', () => {
+      const sinks = plugin.getBuiltinSinks();
+      expect(sinks.length).toBeGreaterThan(0);
+
+      // Check for SQL injection
+      const executeQuery = sinks.find(s => s.method === 'executeQuery');
+      expect(executeQuery).toBeDefined();
+      expect(executeQuery?.cwe).toBe('CWE-89');
+
+      // Check for command injection
+      const exec = sinks.find(s => s.method === 'exec' && s.class === 'Runtime');
+      expect(exec).toBeDefined();
+      expect(exec?.cwe).toBe('CWE-78');
+    });
+  });
+
+  describe('JavaScriptPlugin', () => {
+    const plugin = new JavaScriptPlugin();
+
+    it('should have correct id', () => {
+      expect(plugin.id).toBe('javascript');
+    });
+
+    it('should handle JS/TS files', () => {
+      expect(plugin.canHandle('app.js')).toBe(true);
+      expect(plugin.canHandle('app.ts')).toBe(true);
+      expect(plugin.canHandle('App.jsx')).toBe(true);
+      expect(plugin.canHandle('App.tsx')).toBe(true);
+      expect(plugin.canHandle('test.mjs')).toBe(true);
+      expect(plugin.canHandle('test.cjs')).toBe(true);
+      expect(plugin.canHandle('test.java')).toBe(false);
+    });
+
+    it('should have node type mappings', () => {
+      expect(plugin.nodeTypes.classDeclaration).toContain('class_declaration');
+      expect(plugin.nodeTypes.functionDeclaration).toContain('function_declaration');
+      expect(plugin.nodeTypes.methodCall).toContain('call_expression');
+    });
+
+    it('should have builtin sources', () => {
+      const sources = plugin.getBuiltinSources();
+      expect(sources.length).toBeGreaterThan(0);
+
+      // Check for Express.js patterns
+      const query = sources.find(s => s.method === 'query');
+      expect(query).toBeDefined();
+      expect(query?.type).toBe('http_param');
+
+      // Check for process.env
+      const env = sources.find(s => s.method === 'env');
+      expect(env).toBeDefined();
+      expect(env?.type).toBe('env_var');
+    });
+
+    it('should have builtin sinks', () => {
+      const sinks = plugin.getBuiltinSinks();
+      expect(sinks.length).toBeGreaterThan(0);
+
+      // Check for command injection
+      const exec = sinks.find(s => s.method === 'exec');
+      expect(exec).toBeDefined();
+      expect(exec?.cwe).toBe('CWE-78');
+
+      // Check for code injection
+      const evalSink = sinks.find(s => s.method === 'eval');
+      expect(evalSink).toBeDefined();
+      expect(evalSink?.cwe).toBe('CWE-94');
+
+      // Check for prototype pollution
+      const merge = sinks.find(s => s.method === 'merge');
+      expect(merge).toBeDefined();
+      expect(merge?.cwe).toBe('CWE-1321');
+    });
+  });
+
+  describe('PythonPlugin', () => {
+    const plugin = new PythonPlugin();
+
+    it('should have correct id', () => {
+      expect(plugin.id).toBe('python');
+    });
+
+    it('should handle .py files', () => {
+      expect(plugin.canHandle('app.py')).toBe(true);
+      expect(plugin.canHandle('script.pyw')).toBe(true);
+      expect(plugin.canHandle('test.js')).toBe(false);
+    });
+
+    it('should have node type mappings', () => {
+      expect(plugin.nodeTypes.classDeclaration).toContain('class_definition');
+      expect(plugin.nodeTypes.functionDeclaration).toContain('function_definition');
+      expect(plugin.nodeTypes.decorator).toContain('decorator');
+    });
+
+    it('should have builtin sources', () => {
+      const sources = plugin.getBuiltinSources();
+      expect(sources.length).toBeGreaterThan(0);
+
+      // Check for Flask patterns
+      const args = sources.find(s => s.method === 'args');
+      expect(args).toBeDefined();
+      expect(args?.type).toBe('http_param');
+
+      // Check for input()
+      const input = sources.find(s => s.method === 'input');
+      expect(input).toBeDefined();
+      expect(input?.type).toBe('user_input');
+    });
+
+    it('should have builtin sinks', () => {
+      const sinks = plugin.getBuiltinSinks();
+      expect(sinks.length).toBeGreaterThan(0);
+
+      // Check for command injection
+      const system = sinks.find(s => s.method === 'system');
+      expect(system).toBeDefined();
+      expect(system?.cwe).toBe('CWE-78');
+
+      // Check for code injection
+      const evalSink = sinks.find(s => s.method === 'eval');
+      expect(evalSink).toBeDefined();
+      expect(evalSink?.cwe).toBe('CWE-94');
+
+      // Check for deserialization
+      const pickleLoads = sinks.find(s => s.method === 'loads' && s.class === 'pickle');
+      expect(pickleLoads).toBeDefined();
+      expect(pickleLoads?.cwe).toBe('CWE-502');
+    });
+  });
+
+  describe('RustPlugin', () => {
+    const plugin = new RustPlugin();
+
+    it('should have correct id', () => {
+      expect(plugin.id).toBe('rust');
+    });
+
+    it('should handle .rs files', () => {
+      expect(plugin.canHandle('main.rs')).toBe(true);
+      expect(plugin.canHandle('lib.rs')).toBe(true);
+      expect(plugin.canHandle('test.py')).toBe(false);
+    });
+
+    it('should have node type mappings', () => {
+      expect(plugin.nodeTypes.classDeclaration).toContain('struct_item');
+      expect(plugin.nodeTypes.interfaceDeclaration).toContain('trait_item');
+      expect(plugin.nodeTypes.enumDeclaration).toContain('enum_item');
+    });
+
+    it('should have builtin sources', () => {
+      const sources = plugin.getBuiltinSources();
+      expect(sources.length).toBeGreaterThan(0);
+
+      // Check for Actix-web patterns
+      const query = sources.find(s => s.method === 'Query');
+      expect(query).toBeDefined();
+      expect(query?.type).toBe('http_param');
+
+      // Check for std::env
+      const args = sources.find(s => s.method === 'args');
+      expect(args).toBeDefined();
+      expect(args?.type).toBe('cli_arg');
+    });
+
+    it('should have builtin sinks', () => {
+      const sinks = plugin.getBuiltinSinks();
+      expect(sinks.length).toBeGreaterThan(0);
+
+      // Check for command injection
+      const command = sinks.find(s => s.method === 'Command');
+      expect(command).toBeDefined();
+      expect(command?.cwe).toBe('CWE-78');
+
+      // Check for path traversal
+      const fileOpen = sinks.find(s => s.method === 'open' && s.class === 'File');
+      expect(fileOpen).toBeDefined();
+      expect(fileOpen?.cwe).toBe('CWE-22');
+
+      // Check for unsafe memory
+      const transmute = sinks.find(s => s.method === 'transmute');
+      expect(transmute).toBeDefined();
+      expect(transmute?.cwe).toBe('CWE-119');
+    });
+  });
+
+  describe('Plugin Registration', () => {
+    it('should register all builtin plugins', () => {
+      const registry = getLanguageRegistry();
+      const languages = registry.getSupportedLanguages();
+
+      expect(languages).toContain('java');
+      expect(languages).toContain('javascript');
+      expect(languages).toContain('python');
+      expect(languages).toContain('rust');
+    });
+
+    it('should allow lookup by language', () => {
+      expect(getLanguagePlugin('java')).toBeDefined();
+      expect(getLanguagePlugin('javascript')).toBeDefined();
+      expect(getLanguagePlugin('python')).toBeDefined();
+      expect(getLanguagePlugin('rust')).toBeDefined();
+    });
+
+    it('should allow lookup by file extension', () => {
+      const registry = getLanguageRegistry();
+
+      expect(registry.getForFile('Test.java')?.id).toBe('java');
+      expect(registry.getForFile('app.js')?.id).toBe('javascript');
+      expect(registry.getForFile('app.ts')?.id).toBe('javascript');
+      expect(registry.getForFile('main.py')?.id).toBe('python');
+      expect(registry.getForFile('lib.rs')?.id).toBe('rust');
+    });
+  });
+
+  describe('String Literal Detection', () => {
+    describe('JavaPlugin', () => {
+      const plugin = new JavaPlugin();
+
+      it('should identify Java string literals', () => {
+        // These would need actual syntax nodes in a real test
+        expect(plugin.isStringLiteral({ type: 'string_literal' } as any)).toBe(true);
+        expect(plugin.isStringLiteral({ type: 'number' } as any)).toBe(false);
+      });
+    });
+
+    describe('JavaScriptPlugin', () => {
+      const plugin = new JavaScriptPlugin();
+
+      it('should identify JS string literals', () => {
+        expect(plugin.isStringLiteral({ type: 'string' } as any)).toBe(true);
+        expect(plugin.isStringLiteral({ type: 'template_string' } as any)).toBe(true);
+        expect(plugin.isStringLiteral({ type: 'number' } as any)).toBe(false);
+      });
+    });
+
+    describe('PythonPlugin', () => {
+      const plugin = new PythonPlugin();
+
+      it('should identify Python string literals', () => {
+        expect(plugin.isStringLiteral({ type: 'string' } as any)).toBe(true);
+        expect(plugin.isStringLiteral({ type: 'concatenated_string' } as any)).toBe(true);
+        expect(plugin.isStringLiteral({ type: 'number' } as any)).toBe(false);
+      });
+    });
+
+    describe('RustPlugin', () => {
+      const plugin = new RustPlugin();
+
+      it('should identify Rust string literals', () => {
+        expect(plugin.isStringLiteral({ type: 'string_literal' } as any)).toBe(true);
+        expect(plugin.isStringLiteral({ type: 'raw_string_literal' } as any)).toBe(true);
+        expect(plugin.isStringLiteral({ type: 'number' } as any)).toBe(false);
+      });
+    });
+  });
+
+  describe('String Value Extraction', () => {
+    describe('JavaPlugin', () => {
+      const plugin = new JavaPlugin();
+
+      it('should extract value from double-quoted strings', () => {
+        const node = { type: 'string_literal', text: '"hello world"' } as any;
+        expect(plugin.getStringValue(node)).toBe('hello world');
+      });
+
+      it('should extract value from single-quoted char literals', () => {
+        // Java uses single quotes for char literals
+        const node = { type: 'character_literal', text: "'h'" } as any;
+        // character_literal is not a string_literal type in Java
+        expect(plugin.getStringValue(node)).toBeUndefined();
+      });
+
+      it('should return undefined for non-string nodes', () => {
+        const node = { type: 'number', text: '42' } as any;
+        expect(plugin.getStringValue(node)).toBeUndefined();
+      });
+
+      it('should handle strings without quotes', () => {
+        const node = { type: 'string_literal', text: 'hello' } as any;
+        expect(plugin.getStringValue(node)).toBe('hello');
+      });
+    });
+
+    describe('JavaScriptPlugin', () => {
+      const plugin = new JavaScriptPlugin();
+
+      it('should extract value from JS strings', () => {
+        const node = { type: 'string', text: '"test"' } as any;
+        expect(plugin.getStringValue(node)).toBe('test');
+      });
+    });
+  });
+
+  describe('Default Method Implementations', () => {
+    const plugin = new JavaPlugin();
+
+    it('should detect Spring framework from imports', () => {
+      const context = {
+        tree: {},
+        source: '',
+        filePath: '',
+        imports: [{ from_package: 'org.springframework.web.bind', imported_name: 'Controller' }],
+        annotations: [],
+      } as any;
+      const framework = plugin.detectFramework(context);
+      expect(framework?.name).toBe('spring');
+    });
+
+    it('should return undefined when no framework detected', () => {
+      const context = {
+        tree: {},
+        source: '',
+        filePath: '',
+        imports: [],
+        annotations: [],
+      } as any;
+      const framework = plugin.detectFramework(context);
+      expect(framework).toBeUndefined();
+    });
+
+    it('should return undefined for getReceiverType', () => {
+      const node = { type: 'method_call' } as any;
+      const context = { tree: {}, source: '', filePath: '', imports: [], annotations: [] } as any;
+      // getReceiverType in JavaPlugin may have specific implementation
+      // Just verify it doesn't throw
+      expect(() => plugin.getReceiverType(node, context)).not.toThrow();
+    });
+  });
+
+  describe('File Extension Handling', () => {
+    it('should handle extension with or without dot', () => {
+      const plugin = new JavaPlugin();
+      // Extensions in plugin can be with or without leading dot
+      expect(plugin.canHandle('Test.java')).toBe(true);
+      expect(plugin.canHandle('test.JAVA')).toBe(true); // case insensitive
+    });
+
+    it('should handle full paths', () => {
+      const plugin = new JavaScriptPlugin();
+      expect(plugin.canHandle('/home/user/project/src/app.ts')).toBe(true);
+      expect(plugin.canHandle('C:\\Users\\project\\app.js')).toBe(true);
+    });
+  });
+
+  describe('React and React Native Support', () => {
+    const plugin = new JavaScriptPlugin();
+
+    describe('Framework Detection', () => {
+      it('should detect React from imports', () => {
+        const context = {
+          tree: {},
+          source: '',
+          filePath: '',
+          imports: [{ from_package: 'react', imported_name: 'React' }],
+          annotations: [],
+        } as any;
+        const framework = plugin.detectFramework(context);
+        expect(framework?.name).toBe('react');
+      });
+
+      it('should detect React Native from imports', () => {
+        const context = {
+          tree: {},
+          source: '',
+          filePath: '',
+          imports: [{ from_package: 'react-native', imported_name: 'View' }],
+          annotations: [],
+        } as any;
+        const framework = plugin.detectFramework(context);
+        expect(framework?.name).toBe('react-native');
+      });
+
+      it('should detect React Navigation (React Native)', () => {
+        const context = {
+          tree: {},
+          source: '',
+          filePath: '',
+          imports: [{ from_package: '@react-navigation/native', imported_name: 'NavigationContainer' }],
+          annotations: [],
+        } as any;
+        const framework = plugin.detectFramework(context);
+        expect(framework?.name).toBe('react-native');
+      });
+
+      it('should detect React Router', () => {
+        const context = {
+          tree: {},
+          source: '',
+          filePath: '',
+          imports: [{ from_package: 'react-router-dom', imported_name: 'BrowserRouter' }],
+          annotations: [],
+        } as any;
+        const framework = plugin.detectFramework(context);
+        expect(framework?.name).toBe('react');
+      });
+
+      it('should detect Next.js', () => {
+        const context = {
+          tree: {},
+          source: '',
+          filePath: '',
+          imports: [{ from_package: 'next/router', imported_name: 'useRouter' }],
+          annotations: [],
+        } as any;
+        const framework = plugin.detectFramework(context);
+        expect(framework?.name).toBe('nextjs');
+      });
+
+      it('should detect Expo', () => {
+        const context = {
+          tree: {},
+          source: '',
+          filePath: '',
+          imports: [{ from_package: 'expo-linking', imported_name: 'Linking' }],
+          annotations: [],
+        } as any;
+        const framework = plugin.detectFramework(context);
+        expect(framework?.name).toBe('react-native');
+      });
+    });
+
+    describe('React Sources', () => {
+      it('should have React Router source patterns', () => {
+        const sources = plugin.getBuiltinSources();
+
+        const useParams = sources.find(s => s.method === 'useParams');
+        expect(useParams).toBeDefined();
+        expect(useParams?.type).toBe('http_path');
+
+        const useSearchParams = sources.find(s => s.method === 'useSearchParams');
+        expect(useSearchParams).toBeDefined();
+        expect(useSearchParams?.type).toBe('http_param');
+
+        const useLocation = sources.find(s => s.method === 'useLocation');
+        expect(useLocation).toBeDefined();
+        expect(useLocation?.type).toBe('url_param');
+      });
+
+      it('should have Next.js source patterns', () => {
+        const sources = plugin.getBuiltinSources();
+
+        const useRouter = sources.find(s => s.method === 'useRouter');
+        expect(useRouter).toBeDefined();
+        expect(useRouter?.type).toBe('http_param');
+
+        const usePathname = sources.find(s => s.method === 'usePathname');
+        expect(usePathname).toBeDefined();
+        expect(usePathname?.type).toBe('http_path');
+      });
+    });
+
+    describe('React Native Sources', () => {
+      it('should have React Navigation source patterns', () => {
+        const sources = plugin.getBuiltinSources();
+
+        const useRoute = sources.find(s => s.method === 'useRoute');
+        expect(useRoute).toBeDefined();
+        expect(useRoute?.type).toBe('navigation_param');
+      });
+
+      it('should have Linking source patterns', () => {
+        const sources = plugin.getBuiltinSources();
+
+        const getInitialURL = sources.find(s => s.method === 'getInitialURL' && s.class === 'Linking');
+        expect(getInitialURL).toBeDefined();
+        expect(getInitialURL?.type).toBe('url_param');
+
+        const parse = sources.find(s => s.method === 'parse' && s.class === 'Linking');
+        expect(parse).toBeDefined();
+      });
+
+      it('should have Clipboard source patterns', () => {
+        const sources = plugin.getBuiltinSources();
+
+        const getString = sources.find(s => s.method === 'getString' && s.class === 'Clipboard');
+        expect(getString).toBeDefined();
+        expect(getString?.type).toBe('user_input');
+      });
+
+      it('should have AsyncStorage source patterns', () => {
+        const sources = plugin.getBuiltinSources();
+
+        const getItem = sources.find(s => s.method === 'getItem' && s.class === 'AsyncStorage');
+        expect(getItem).toBeDefined();
+        expect(getItem?.type).toBe('storage_input');
+      });
+    });
+
+    describe('React Sinks', () => {
+      it('should have dangerouslySetInnerHTML sink', () => {
+        const sinks = plugin.getBuiltinSinks();
+
+        const dangerous = sinks.find(s => s.method === 'dangerouslySetInnerHTML');
+        expect(dangerous).toBeDefined();
+        expect(dangerous?.cwe).toBe('CWE-79');
+        expect(dangerous?.severity).toBe('critical');
+      });
+    });
+
+    describe('React Native Sinks', () => {
+      it('should have WebView sink', () => {
+        const sinks = plugin.getBuiltinSinks();
+
+        const webview = sinks.find(s => s.method === 'source' && s.class === 'WebView');
+        expect(webview).toBeDefined();
+        expect(webview?.cwe).toBe('CWE-79');
+      });
+
+      it('should have Linking.openURL sink', () => {
+        const sinks = plugin.getBuiltinSinks();
+
+        const openURL = sinks.find(s => s.method === 'openURL' && s.class === 'Linking');
+        expect(openURL).toBeDefined();
+        expect(openURL?.cwe).toBe('CWE-601');
+        expect(openURL?.type).toBe('open_redirect');
+      });
+
+      it('should have AsyncStorage.setItem sink', () => {
+        const sinks = plugin.getBuiltinSinks();
+
+        const setItem = sinks.find(s => s.method === 'setItem' && s.class === 'AsyncStorage');
+        expect(setItem).toBeDefined();
+        expect(setItem?.type).toBe('insecure_storage');
+      });
+    });
+
+    describe('Next.js Sinks', () => {
+      it('should have redirect sink', () => {
+        const sinks = plugin.getBuiltinSinks();
+
+        const redirect = sinks.find(s => s.method === 'redirect');
+        expect(redirect).toBeDefined();
+        expect(redirect?.cwe).toBe('CWE-601');
+        expect(redirect?.type).toBe('open_redirect');
+      });
+
+      it('should have router.push sink', () => {
+        const sinks = plugin.getBuiltinSinks();
+
+        const push = sinks.find(s => s.method === 'push' && s.class === 'router');
+        expect(push).toBeDefined();
+        expect(push?.type).toBe('open_redirect');
+      });
+    });
+  });
+});
