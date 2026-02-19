@@ -15,7 +15,6 @@ export {
 
 export {
   analyzeTaint,
-  isInDangerousPosition,
 } from './taint-matcher.js';
 
 export {
@@ -75,44 +74,11 @@ export {
 export {
   DFGVerifier,
   verifyTaintFlow,
-  formatVerificationResult,
   type VerificationResult,
   type VerificationPath,
   type VerificationStep,
   type VerifierConfig,
 } from './dfg-verifier.js';
-
-// RustSec Advisory Database
-export {
-  loadBundledAdvisories,
-  parseAdvisoryJson,
-  categoryToSeverity,
-  getAdvisoriesForCrate,
-  findAdvisoryByCve,
-  getVulnerableCrates,
-  type AdvisoryVulnerability,
-  type AdvisoryDatabase,
-} from './advisory-db.js';
-
-export {
-  parseCargoLock,
-  parseCargoToml,
-  filterRegistryDeps,
-  type CargoLock,
-  type CargoLockDependency,
-  type CargoToml,
-  type CargoTomlDependency,
-} from './cargo-parser.js';
-
-export {
-  scanCargoLock,
-  checkCrateVulnerability,
-  formatFinding,
-  formatScanReport,
-  type DependencyFinding,
-  type ScanOptions,
-  type ScanResult,
-} from './dependency-scanner.js';
 
 export {
   parseVersion,

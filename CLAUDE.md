@@ -4,9 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Development Guardrails
 
+- **Browser + Node.js compatible (CRITICAL)** - circle-ir MUST run in both browser and Node.js environments without any issues. No Node.js-specific APIs (`process`, `fs`, `path`, `child_process`, `os`, etc.) anywhere in library code. No npm dependencies that require Node.js. Only allowed dependencies: `web-tree-sitter`, `yaml`. The logger uses a zero-dependency console-based implementation with dependency injection (`setLogger()`) so consumers can inject pino or other loggers from their own packages.
 - **TypeScript throughout** - All code must be written in TypeScript with strict mode enabled. No `any` types without explicit justification.
 - **Unit test coverage ≥75%** - All new code must have unit tests. Run coverage reports to verify threshold before merging.
-- **Universal core library** - The core library (`src/core/`, `src/analysis/`, `src/types/`) must be environment-agnostic. No Node.js-specific APIs in core code. Platform-specific code belongs only in entry points (`src/browser.ts`, `src/worker.ts`).
+- **Universal core library** - The core library (`src/core/`, `src/analysis/`, `src/types/`) must be environment-agnostic. Platform-specific code belongs only in entry points (`src/browser.ts`).
 - **circle-ir spec alignment** - All IR types and structures must conform to `docs/SPEC.md`. When implementing new features, update the spec's Implementation Status table (TypeScript column) accordingly.
 
 ## Project Overview
@@ -117,9 +118,10 @@ The spec includes an Implementation Status table tracking Python (reference) vs 
 When reviewing or modifying circle-ir, verify these requirements:
 
 ### Independence (Critical)
+- [ ] **Browser + Node.js compatible** - No Node.js-specific APIs (`process`, `fs`, `path`, `child_process`, `os`) in library code. Must run in browser and Cloudflare Workers.
 - [ ] **No AI/LLM dependencies** - circle-ir must NOT depend on circle-ir-ai, OpenAI, Anthropic, or any LLM libraries
 - [ ] **No cross-package imports** - Only import from within circle-ir, never from circle-ir-ai or circle-pack
-- [ ] **Minimal dependencies** - Only allowed: `web-tree-sitter`, `yaml`, `pino` (logging)
+- [ ] **Minimal dependencies** - Only allowed: `web-tree-sitter`, `yaml`. No Node.js-only packages. Logger is zero-dependency with DI via `setLogger()`.
 
 ### Language Abstraction
 - [ ] **Plugin-based architecture** - All language-specific code in `src/languages/plugins/`

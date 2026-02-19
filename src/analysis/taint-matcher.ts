@@ -79,7 +79,7 @@ function findSources(
       if (method.modifiers.includes('private')) continue;
 
       // Skip standard methods that are unlikely to receive tainted data
-      const skipMethods = ['toString', 'hashCode', 'equals', 'compareTo', 'getDescription', 'getVulnerabilityCount'];
+      const skipMethods = ['toString', 'hashCode', 'equals', 'compareTo'];
       if (skipMethods.includes(method.name)) continue;
 
       for (const param of method.parameters) {

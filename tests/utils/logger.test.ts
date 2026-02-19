@@ -2,28 +2,22 @@
  * Tests for Logger Module
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   configureLogger,
   setLogLevel,
   getLogLevel,
-  createChildLogger,
+  setLogger,
   logger,
   type LogLevel,
+  type LoggerInstance,
 } from '../../src/utils/logger.js';
 
 describe('Logger', () => {
-  // Store original env
-  const originalEnv = { ...process.env };
-
   beforeEach(() => {
-    // Reset to default level
-    configureLogger({ level: 'info', pretty: false });
-  });
-
-  afterEach(() => {
-    // Restore env
-    process.env = { ...originalEnv };
+    // Reset to defaults
+    setLogger(null as unknown as LoggerInstance); // clear custom logger
+    setLogLevel('info');
   });
 
   describe('configureLogger', () => {
@@ -32,16 +26,11 @@ describe('Logger', () => {
       expect(getLogLevel()).toBe('debug');
     });
 
-    it('should configure with pretty printing', () => {
-      // This should not throw
-      expect(() => configureLogger({ level: 'info', pretty: true })).not.toThrow();
-    });
-
-    it('should configure with name', () => {
+    it('should configure with name without throwing', () => {
       expect(() => configureLogger({ name: 'test-logger' })).not.toThrow();
     });
 
-    it('should merge config options', () => {
+    it('should preserve level when configuring other options', () => {
       configureLogger({ level: 'warn' });
       configureLogger({ name: 'merged' });
       expect(getLogLevel()).toBe('warn');
@@ -91,31 +80,14 @@ describe('Logger', () => {
       expect(getLogLevel()).toBe('debug');
     });
 
-    it('should default to info if not set', () => {
-      configureLogger({ level: undefined });
-      // Should have some default
-      expect(typeof getLogLevel()).toBe('string');
-    });
-  });
-
-  describe('createChildLogger', () => {
-    it('should create a child logger with bindings', () => {
-      const child = createChildLogger({ module: 'test' });
-      expect(child).toBeDefined();
-      expect(typeof child.info).toBe('function');
-      expect(typeof child.error).toBe('function');
-    });
-
-    it('should create child with multiple bindings', () => {
-      const child = createChildLogger({ module: 'test', component: 'parser' });
-      expect(child).toBeDefined();
+    it('should default to info', () => {
+      expect(getLogLevel()).toBe('info');
     });
   });
 
   describe('logger methods', () => {
     it('should have trace method', () => {
       expect(typeof logger.trace).toBe('function');
-      // Should not throw
       expect(() => logger.trace('test trace')).not.toThrow();
     });
 
@@ -144,40 +116,73 @@ describe('Logger', () => {
       expect(() => logger.fatal('test fatal')).not.toThrow();
     });
 
-    it('should have child method', () => {
-      expect(typeof logger.child).toBe('function');
-      const child = logger.child({ module: 'test' });
-      expect(child).toBeDefined();
-    });
-
     it('should have isLevelEnabled method', () => {
       expect(typeof logger.isLevelEnabled).toBe('function');
     });
   });
 
   describe('logger with object context', () => {
-    it('should log trace with object', () => {
-      expect(() => logger.trace('trace message', { key: 'value' })).not.toThrow();
-    });
-
-    it('should log debug with object', () => {
-      expect(() => logger.debug('debug message', { key: 'value' })).not.toThrow();
-    });
-
     it('should log info with object', () => {
-      expect(() => logger.info('info message', { key: 'value' })).not.toThrow();
+      const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      logger.info('info message', { key: 'value' });
+      expect(spy).toHaveBeenCalledWith(expect.stringContaining('info message'));
+      expect(spy).toHaveBeenCalledWith(expect.stringContaining('"key":"value"'));
+      spy.mockRestore();
     });
 
     it('should log warn with object', () => {
-      expect(() => logger.warn('warn message', { key: 'value' })).not.toThrow();
+      const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      logger.warn('warn message', { key: 'value' });
+      expect(spy).toHaveBeenCalledWith(expect.stringContaining('warn message'));
+      spy.mockRestore();
     });
 
     it('should log error with object', () => {
-      expect(() => logger.error('error message', { error: 'test error' })).not.toThrow();
+      const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      logger.error('error message', { error: 'test error' });
+      expect(spy).toHaveBeenCalledWith(expect.stringContaining('error message'));
+      spy.mockRestore();
     });
 
     it('should log fatal with object', () => {
-      expect(() => logger.fatal('fatal message', { error: 'test error' })).not.toThrow();
+      const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      logger.fatal('fatal message', { error: 'test error' });
+      expect(spy).toHaveBeenCalledWith(expect.stringContaining('fatal message'));
+      spy.mockRestore();
+    });
+  });
+
+  describe('level filtering', () => {
+    it('should not log below current level', () => {
+      setLogLevel('warn');
+      const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      logger.debug('should not appear');
+      logger.info('should not appear');
+      expect(debugSpy).not.toHaveBeenCalled();
+      expect(logSpy).not.toHaveBeenCalled();
+      debugSpy.mockRestore();
+      logSpy.mockRestore();
+    });
+
+    it('should log at and above current level', () => {
+      setLogLevel('warn');
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      logger.warn('should appear');
+      logger.error('should appear');
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+      warnSpy.mockRestore();
+      errorSpy.mockRestore();
+    });
+
+    it('should log nothing at silent level', () => {
+      setLogLevel('silent');
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      logger.fatal('should not appear');
+      expect(errorSpy).not.toHaveBeenCalled();
+      errorSpy.mockRestore();
     });
   });
 
@@ -199,6 +204,63 @@ describe('Logger', () => {
     it('should handle silent level', () => {
       setLogLevel('silent');
       expect(logger.isLevelEnabled('fatal')).toBe(false);
+    });
+  });
+
+  describe('setLogger (dependency injection)', () => {
+    it('should delegate to custom logger when set', () => {
+      const custom: LoggerInstance = {
+        trace: vi.fn(),
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        fatal: vi.fn(),
+      };
+      setLogger(custom);
+
+      logger.info('hello', { key: 'val' });
+      logger.error('oops');
+      logger.debug('dbg');
+
+      expect(custom.info).toHaveBeenCalledWith('hello', { key: 'val' });
+      expect(custom.error).toHaveBeenCalledWith('oops', undefined);
+      expect(custom.debug).toHaveBeenCalledWith('dbg', undefined);
+    });
+
+    it('should bypass level filtering when custom logger is set', () => {
+      const custom: LoggerInstance = {
+        trace: vi.fn(),
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        fatal: vi.fn(),
+      };
+      setLogger(custom);
+      setLogLevel('error'); // would normally filter debug
+
+      logger.debug('should still reach custom logger');
+      expect(custom.debug).toHaveBeenCalledWith('should still reach custom logger', undefined);
+    });
+
+    it('should revert to console when custom logger is cleared', () => {
+      const custom: LoggerInstance = {
+        trace: vi.fn(),
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        fatal: vi.fn(),
+      };
+      setLogger(custom);
+      setLogger(null as unknown as LoggerInstance); // clear
+
+      const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      logger.info('back to console');
+      expect(custom.info).not.toHaveBeenCalled();
+      expect(spy).toHaveBeenCalledWith(expect.stringContaining('back to console'));
+      spy.mockRestore();
     });
   });
 });

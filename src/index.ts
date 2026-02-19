@@ -167,3 +167,15 @@ export type {
   TaintSourcePattern,
   TaintSinkPattern,
 } from './languages/index.js';
+
+// Logger (dependency injection)
+export {
+  logger,
+  setLogger,
+  configureLogger,
+  setLogLevel,
+  getLogLevel,
+  type LogLevel,
+  type LoggerConfig,
+  type LoggerInstance,
+} from './utils/logger.js';

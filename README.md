@@ -6,7 +6,7 @@ A high-performance Static Application Security Testing (SAST) library for detect
 
 - **Taint Analysis**: Track data flow from sources (user input) to sinks (dangerous operations)
 - **Multi-language Support**: Java, JavaScript/TypeScript, Python, Rust
-- **High Accuracy**: 100% on OWASP Benchmark, 100% on Juliet Test Suite, 98.1% TPR on SecuriBench Micro
+- **High Accuracy**: 100% on OWASP Benchmark, 100% on Juliet Test Suite, 97.7% TPR on SecuriBench Micro
 - **Universal**: Works in Node.js, browsers, and Cloudflare Workers
 - **Zero External Dependencies**: Core analysis runs without network calls or external services
 - **Browser Compatible**: Tree-sitter WASM for universal parsing
@@ -187,7 +187,7 @@ sources:
 |-----------|-------|---------|
 | **OWASP Benchmark** | +100% | TPR 100%, FPR 0% (1415 test cases) |
 | **Juliet Test Suite** | +100% | 156/156 test cases, 9 CWEs |
-| **SecuriBench Micro** | 98.1% TPR | 106/108 vulns detected, 6.7% FPR |
+| **SecuriBench Micro** | 97.7% TPR | 105/108 vulns detected, 6.7% FPR |
 | **CWE-Bench-Java** | 65.5% | 509/777 real-world CVEs |
 
 ## Documentation
