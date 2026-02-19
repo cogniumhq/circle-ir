@@ -374,6 +374,157 @@
       "severity": "high",
       "return_tainted": true,
       "note": "Model object getter - may contain HTTP request data"
+    },
+    {
+      "method": "getParameter",
+      "class": "StaplerRequest",
+      "type": "http_param",
+      "severity": "high",
+      "return_tainted": true,
+      "note": "Jenkins StaplerRequest parameter - attacker-controlled"
+    },
+    {
+      "method": "getSubmittedForm",
+      "class": "StaplerRequest",
+      "type": "http_body",
+      "severity": "high",
+      "return_tainted": true,
+      "note": "Jenkins StaplerRequest form submission"
+    },
+    {
+      "method": "bindJSON",
+      "class": "StaplerRequest",
+      "type": "http_body",
+      "severity": "high",
+      "return_tainted": true,
+      "note": "Jenkins StaplerRequest JSON binding"
+    },
+    {
+      "method": "getRequestURI",
+      "class": "StaplerRequest",
+      "type": "http_path",
+      "severity": "high",
+      "return_tainted": true,
+      "note": "Jenkins StaplerRequest URI"
+    },
+    {
+      "method": "getRestOfPath",
+      "class": "StaplerRequest",
+      "type": "http_path",
+      "severity": "high",
+      "return_tainted": true,
+      "note": "Jenkins StaplerRequest rest of path"
+    },
+    {
+      "method": "getPathParameter",
+      "class": "HandlerRequest",
+      "type": "http_param",
+      "severity": "high",
+      "return_tainted": true,
+      "note": "Apache Flink HandlerRequest path parameter"
+    },
+    {
+      "method": "getQueryParameter",
+      "class": "HandlerRequest",
+      "type": "http_param",
+      "severity": "high",
+      "return_tainted": true,
+      "note": "Apache Flink HandlerRequest query parameter"
+    },
+    {
+      "method": "getRequestBody",
+      "class": "HandlerRequest",
+      "type": "http_body",
+      "severity": "high",
+      "return_tainted": true,
+      "note": "Apache Flink HandlerRequest body"
+    },
+    {
+      "method": "path",
+      "class": "HttpServerRequest",
+      "type": "http_path",
+      "severity": "high",
+      "return_tainted": true,
+      "note": "Vert.x HTTP request path"
+    },
+    {
+      "method": "getParam",
+      "class": "HttpServerRequest",
+      "type": "http_param",
+      "severity": "high",
+      "return_tainted": true,
+      "note": "Vert.x HTTP request parameter"
+    },
+    {
+      "method": "getHeader",
+      "class": "HttpServerRequest",
+      "type": "http_header",
+      "severity": "high",
+      "return_tainted": true,
+      "note": "Vert.x HTTP request header"
+    },
+    {
+      "method": "request",
+      "class": "RoutingContext",
+      "type": "http_param",
+      "severity": "high",
+      "return_tainted": true,
+      "note": "Vert.x RoutingContext request access"
+    },
+    {
+      "method": "pathParam",
+      "class": "RoutingContext",
+      "type": "http_path",
+      "severity": "high",
+      "return_tainted": true,
+      "note": "Vert.x RoutingContext path parameter"
+    },
+    {
+      "method": "queryParam",
+      "class": "RoutingContext",
+      "type": "http_param",
+      "severity": "high",
+      "return_tainted": true,
+      "note": "Vert.x RoutingContext query parameter"
+    },
+    {
+      "method": "getBodyAsString",
+      "class": "RoutingContext",
+      "type": "http_body",
+      "severity": "high",
+      "return_tainted": true,
+      "note": "Vert.x RoutingContext body"
+    },
+    {
+      "method": "normalisedPath",
+      "class": "RoutingContext",
+      "type": "http_path",
+      "severity": "high",
+      "return_tainted": true,
+      "note": "Vert.x RoutingContext normalized path"
+    },
+    {
+      "method": "getRemoteEnvironment",
+      "type": "http_param",
+      "severity": "high",
+      "return_tainted": true,
+      "note": "Spring Cloud Config remote environment fetch"
+    },
+    {
+      "method": "getHeader",
+      "class": "ServerWebExchange",
+      "type": "http_header",
+      "severity": "high",
+      "return_tainted": true,
+      "note": "Spring WebFlux exchange header"
+    },
+    {
+      "method": "getExchange",
+      "class": "GatewayFilter",
+      "type": "http_param",
+      "severity": "high",
+      "return_tainted": true,
+      "note": "Spring Cloud Gateway exchange"
     }
   ]
 }

@@ -621,6 +621,142 @@
       "severity": "critical",
       "arg_positions": [0],
       "note": "Groovy class compilation from string"
+    },
+    {
+      "method": "interpolate",
+      "class": "StringSubstitutor",
+      "type": "code_injection",
+      "cwe": "CWE-094",
+      "severity": "critical",
+      "arg_positions": [0],
+      "note": "Apache Commons Text interpolation - CVE-2022-42889 (script:, dns:, url: lookups)"
+    },
+    {
+      "method": "replace",
+      "class": "StringSubstitutor",
+      "type": "code_injection",
+      "cwe": "CWE-094",
+      "severity": "critical",
+      "arg_positions": [0],
+      "note": "Apache Commons Text substitution with lookup"
+    },
+    {
+      "method": "interpolate",
+      "class": "StringLookupFactory",
+      "type": "code_injection",
+      "cwe": "CWE-094",
+      "severity": "critical",
+      "arg_positions": [0],
+      "note": "Apache Commons Text lookup interpolation"
+    },
+    {
+      "method": "getConnection",
+      "class": "DriverManager",
+      "type": "code_injection",
+      "cwe": "CWE-094",
+      "severity": "high",
+      "arg_positions": [0],
+      "note": "JDBC URL injection - can trigger JNDI/RCE via malicious JDBC URLs"
+    },
+    {
+      "method": "createConnection",
+      "type": "code_injection",
+      "cwe": "CWE-094",
+      "severity": "high",
+      "arg_positions": [0],
+      "note": "Database connection creation with attacker-controlled URL"
+    },
+    {
+      "method": "invoke",
+      "class": "RpcInvocation",
+      "type": "code_injection",
+      "cwe": "CWE-094",
+      "severity": "critical",
+      "note": "Dubbo RPC invocation - may execute arbitrary code"
+    },
+    {
+      "method": "decode",
+      "class": "DecodeableRpcInvocation",
+      "type": "code_injection",
+      "cwe": "CWE-094",
+      "severity": "critical",
+      "note": "Dubbo RPC deserialization"
+    },
+    {
+      "method": "refer",
+      "class": "RegistryProtocol",
+      "type": "code_injection",
+      "cwe": "CWE-094",
+      "severity": "high",
+      "note": "Dubbo registry protocol reference"
+    },
+    {
+      "method": "executeScript",
+      "class": "ScriptingComponentHelper",
+      "type": "code_injection",
+      "cwe": "CWE-094",
+      "severity": "critical",
+      "arg_positions": [0],
+      "note": "Apache NiFi script execution"
+    },
+    {
+      "method": "onTrigger",
+      "class": "ExecuteScript",
+      "type": "code_injection",
+      "cwe": "CWE-094",
+      "severity": "critical",
+      "note": "Apache NiFi ExecuteScript processor"
+    },
+    {
+      "method": "parse",
+      "class": "CronDefinition",
+      "type": "code_injection",
+      "cwe": "CWE-094",
+      "severity": "high",
+      "arg_positions": [0],
+      "note": "Cron expression parsing - potential injection"
+    },
+    {
+      "method": "parse",
+      "class": "CronParser",
+      "type": "code_injection",
+      "cwe": "CWE-094",
+      "severity": "high",
+      "arg_positions": [0],
+      "note": "Cron expression parsing"
+    },
+    {
+      "method": "check",
+      "class": "PermitAllPermissionEvaluator",
+      "type": "code_injection",
+      "cwe": "CWE-094",
+      "severity": "high",
+      "note": "Spring Security expression evaluation bypass"
+    },
+    {
+      "method": "evaluate",
+      "class": "SpelExpressionParser",
+      "type": "code_injection",
+      "cwe": "CWE-094",
+      "severity": "critical",
+      "arg_positions": [0],
+      "note": "SpEL direct evaluation"
+    },
+    {
+      "method": "setPropertyValues",
+      "class": "DataBinder",
+      "type": "code_injection",
+      "cwe": "CWE-094",
+      "severity": "high",
+      "note": "Spring DataBinder property binding - Spring4Shell"
+    },
+    {
+      "method": "bind",
+      "class": "DataBinder",
+      "type": "code_injection",
+      "cwe": "CWE-094",
+      "severity": "high",
+      "note": "Spring DataBinder bind - Spring4Shell"
     }
   ],
   "sanitizers": [

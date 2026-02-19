@@ -869,6 +869,115 @@
       "severity": "critical",
       "arg_positions": [0],
       "note": "Shell command execution"
+    },
+    {
+      "method": "cmds",
+      "class": "ProcStarter",
+      "type": "command_injection",
+      "cwe": "CWE-078",
+      "severity": "critical",
+      "arg_positions": [0],
+      "note": "Jenkins Launcher.ProcStarter command list"
+    },
+    {
+      "method": "launch",
+      "class": "Launcher",
+      "type": "command_injection",
+      "cwe": "CWE-078",
+      "severity": "critical",
+      "note": "Jenkins Launcher.launch() - process execution"
+    },
+    {
+      "method": "launch",
+      "class": "ProcStarter",
+      "type": "command_injection",
+      "cwe": "CWE-078",
+      "severity": "critical",
+      "note": "Jenkins ProcStarter.launch() - process execution"
+    },
+    {
+      "method": "start",
+      "class": "ProcStarter",
+      "type": "command_injection",
+      "cwe": "CWE-078",
+      "severity": "critical",
+      "note": "Jenkins ProcStarter.start() - process execution"
+    },
+    {
+      "method": "launchChannel",
+      "class": "Launcher",
+      "type": "command_injection",
+      "cwe": "CWE-078",
+      "severity": "critical",
+      "arg_positions": [0],
+      "note": "Jenkins Launcher channel creation with command"
+    },
+    {
+      "method": "subcommand",
+      "type": "command_injection",
+      "cwe": "CWE-078",
+      "severity": "high",
+      "arg_positions": [0],
+      "note": "Git CLI subcommand construction"
+    },
+    {
+      "method": "launchCommandIn",
+      "type": "command_injection",
+      "cwe": "CWE-078",
+      "severity": "critical",
+      "arg_positions": [0],
+      "note": "Jenkins Git plugin command launch"
+    },
+    {
+      "method": "fetch",
+      "class": "CliGitAPIImpl",
+      "type": "command_injection",
+      "cwe": "CWE-078",
+      "severity": "high",
+      "note": "Jenkins Git plugin fetch - may inject via refspec"
+    },
+    {
+      "method": "checkout",
+      "class": "CliGitAPIImpl",
+      "type": "command_injection",
+      "cwe": "CWE-078",
+      "severity": "high",
+      "note": "Jenkins Git plugin checkout - may inject via branch name"
+    },
+    {
+      "method": "submoduleUpdate",
+      "class": "CliGitAPIImpl",
+      "type": "command_injection",
+      "cwe": "CWE-078",
+      "severity": "high",
+      "note": "Jenkins Git plugin submodule update - CVE injection vector"
+    },
+    {
+      "method": "interpolate",
+      "class": "StringSubstitutor",
+      "type": "command_injection",
+      "cwe": "CWE-078",
+      "severity": "critical",
+      "arg_positions": [0],
+      "note": "Apache Commons Text string interpolation - CVE-2022-42889"
+    },
+    {
+      "method": "replace",
+      "class": "StringSubstitutor",
+      "type": "command_injection",
+      "cwe": "CWE-078",
+      "severity": "critical",
+      "arg_positions": [0],
+      "note": "Apache Commons Text string substitution"
+    },
+    {
+      "method": "getConnection",
+      "class": "DriverManager",
+      "type": "command_injection",
+      "cwe": "CWE-078",
+      "severity": "high",
+      "arg_positions": [0],
+      "note": "JDBC connection with attacker-controlled URL can lead to RCE"
     }
   ],
   "sanitizers": [

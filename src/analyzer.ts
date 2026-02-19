@@ -717,10 +717,72 @@ export async function analyze(
       }
     );
 
-    // Add inter-procedural sinks to the taint sinks
+    // Add inter-procedural sinks to the taint sinks and generate flows
     for (const sink of interProc.propagatedSinks) {
       if (!taint.sinks.some(s => s.line === sink.line)) {
         taint.sinks.push(sink);
+      }
+    }
+
+    // Generate flows for inter-procedural propagated sinks
+    // These sinks are inside called methods where tainted args were passed
+    if (interProc.propagatedSinks.length > 0 && taint.sources.length > 0) {
+      if (!taint.flows) {
+        taint.flows = [];
+      }
+
+      // Build set of sanitizer method names to skip (methods with @sanitizer annotation)
+      const sanitizerMethodNames = new Set<string>();
+      for (const san of taint.sanitizers ?? []) {
+        if (san.type === 'javadoc_sanitizer') {
+          // Extract method name from "methodName()" format
+          const match = san.method.match(/^(\w+)\(\)$/);
+          if (match) sanitizerMethodNames.add(match[1]);
+          else sanitizerMethodNames.add(san.method);
+        }
+      }
+
+      for (const sink of interProc.propagatedSinks) {
+        // Skip external taint escape sinks (not real vulnerability sinks)
+        if (sink.type === 'external_taint_escape') continue;
+
+        // Find which call edge brought taint to this sink's method
+        for (const edge of interProc.callEdges) {
+          if (!interProc.taintedMethods.has(edge.calleeMethod)) continue;
+          const method = interProc.methodNodes.get(edge.calleeMethod);
+          if (!method) continue;
+          if (sink.line < method.startLine || sink.line > method.endLine) continue;
+
+          // Skip sinks inside sanitizer methods (@sanitizer annotation)
+          if (sanitizerMethodNames.has(method.name)) continue;
+
+          // Find the source connected to this call
+          for (const source of taint.sources) {
+            // Source should be in the caller's scope, at or before the call line
+            if (source.line > edge.callLine) continue;
+
+            // Skip low-confidence interprocedural_param sources
+            if (source.type === 'interprocedural_param' && source.confidence < 0.6) continue;
+
+            if (taint.flows.some(f => f.source_line === source.line && f.sink_line === sink.line)) continue;
+
+            taint.flows.push({
+              source_line: source.line,
+              sink_line: sink.line,
+              source_type: source.type,
+              sink_type: sink.type,
+              path: [
+                { variable: source.location, line: source.line, type: 'source' },
+                { variable: `call to ${method.name}()`, line: edge.callLine, type: 'use' },
+                { variable: sink.location, line: sink.line, type: 'sink' },
+              ],
+              confidence: sink.confidence * source.confidence * 0.85,
+              sanitized: false,
+            });
+            break; // One source per sink is enough
+          }
+          break; // One call edge per sink is enough
+        }
       }
     }
 

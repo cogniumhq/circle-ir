@@ -210,6 +210,40 @@ function isInterproceduralTaintableType(typeName: string): boolean {
 }
 
 /**
+ * Check if a SQL query call uses parameterized query pattern.
+ * Parameterized queries (e.g., db.query("SELECT ? ...", [param])) are safe
+ * because user input is passed as bound parameters, not concatenated into the query.
+ *
+ * Recognized patterns:
+ * - db.query(sql, [params], callback)  — Node.js mysql/pg
+ * - db.query(sql, [params])            — Node.js mysql2
+ * - knex.raw(sql, [params])            — Knex.js
+ */
+function isParameterizedQueryCall(call: CallInfo, pattern: SinkPattern): boolean {
+  // Only applies to SQL injection sinks
+  if (pattern.type !== 'sql_injection') return false;
+
+  // Parameterized queries have at least 2 arguments:
+  // arg[0] = query string (with ? or $N placeholders)
+  // arg[1] = params array
+  if (call.arguments.length < 2) return false;
+
+  // Check if the second argument looks like a params array
+  const secondArg = call.arguments.find(a => a.position === 1);
+  if (!secondArg) return false;
+
+  // Check for array literal: [id], [id, name], etc.
+  if (secondArg.expression) {
+    const expr = secondArg.expression.trim();
+    if (expr.startsWith('[')) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
  * Find taint sinks in method calls.
  * Deduplicates sinks at the same location+line+cwe, keeping highest confidence.
  */
@@ -220,6 +254,11 @@ function findSinks(calls: CallInfo[], patterns: SinkPattern[]): TaintSink[] {
   for (const call of calls) {
     for (const pattern of patterns) {
       if (matchesSinkPattern(call, pattern)) {
+        // Skip parameterized queries (safe pattern for SQL injection)
+        if (isParameterizedQueryCall(call, pattern)) {
+          continue;
+        }
+
         const location = formatCallLocation(call);
         const key = `${location}:${call.location.line}:${pattern.cwe}`;
         const confidence = calculateSinkConfidence(call, pattern);

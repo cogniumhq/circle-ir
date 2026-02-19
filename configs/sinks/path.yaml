@@ -684,6 +684,119 @@
       "cwe": "CWE-022",
       "severity": "high",
       "note": "Jenkins FilePath recursive delete"
+    },
+    {
+      "method": "createRelative",
+      "class": "Resource",
+      "type": "path_traversal",
+      "cwe": "CWE-022",
+      "severity": "high",
+      "arg_positions": [0],
+      "note": "Spring Resource.createRelative() - path traversal via relative path"
+    },
+    {
+      "method": "createRelative",
+      "type": "path_traversal",
+      "cwe": "CWE-022",
+      "severity": "high",
+      "arg_positions": [0],
+      "note": "Resource createRelative without class qualifier"
+    },
+    {
+      "method": "sendFile",
+      "type": "path_traversal",
+      "cwe": "CWE-022",
+      "severity": "high",
+      "arg_positions": [0],
+      "note": "Vert.x/HTTP file sending - path traversal"
+    },
+    {
+      "method": "sendStatic",
+      "type": "path_traversal",
+      "cwe": "CWE-022",
+      "severity": "high",
+      "arg_positions": [0],
+      "note": "Static file serving - path traversal"
+    },
+    {
+      "method": "handle",
+      "class": "StaticHandler",
+      "type": "path_traversal",
+      "cwe": "CWE-022",
+      "severity": "high",
+      "note": "Vert.x static file handler"
+    },
+    {
+      "method": "handle",
+      "class": "StaticHandlerImpl",
+      "type": "path_traversal",
+      "cwe": "CWE-022",
+      "severity": "high",
+      "note": "Vert.x static file handler implementation"
+    },
+    {
+      "method": "getFile",
+      "type": "path_traversal",
+      "cwe": "CWE-022",
+      "severity": "high",
+      "arg_positions": [0],
+      "note": "Generic getFile with user input"
+    },
+    {
+      "method": "extractEntry",
+      "type": "path_traversal",
+      "cwe": "CWE-022",
+      "severity": "high",
+      "arg_positions": [0],
+      "note": "Archive entry extraction - zip slip"
+    },
+    {
+      "method": "extractAll",
+      "type": "path_traversal",
+      "cwe": "CWE-022",
+      "severity": "high",
+      "arg_positions": [0],
+      "note": "Archive extraction - zip slip"
+    },
+    {
+      "method": "unzip",
+      "type": "path_traversal",
+      "cwe": "CWE-022",
+      "severity": "high",
+      "arg_positions": [0],
+      "note": "Unzip operation - zip slip"
+    },
+    {
+      "method": "getPath",
+      "class": "ZipEntry",
+      "type": "path_traversal",
+      "cwe": "CWE-022",
+      "severity": "high",
+      "note": "Zip entry path - may contain ../"
+    },
+    {
+      "method": "getName",
+      "class": "ZipEntry",
+      "type": "path_traversal",
+      "cwe": "CWE-022",
+      "severity": "high",
+      "note": "Zip entry name - may contain ../"
+    },
+    {
+      "method": "getEnvironment",
+      "class": "ConfigServicePropertySourceLocator",
+      "type": "path_traversal",
+      "cwe": "CWE-022",
+      "severity": "high",
+      "note": "Spring Cloud Config path traversal"
+    },
+    {
+      "method": "findOne",
+      "class": "GenericResourceRepository",
+      "type": "path_traversal",
+      "cwe": "CWE-022",
+      "severity": "high",
+      "note": "Spring Cloud Config resource repository"
     }
   ],
   "sanitizers": [
