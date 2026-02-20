@@ -47,7 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Universal Core**: Environment-agnostic library works in Node.js, browsers, and Cloudflare Workers
 - **Vulnerability Detection**: SQL injection, command injection, XSS, path traversal, LDAP injection, XPath injection, deserialization, SSRF, code injection, XXE
 - **Configuration-driven Analysis**: YAML-based source/sink definitions
-- **Browser Demo**: Interactive HTML example for browser-based analysis
+- **Browser Example**: Interactive HTML example for browser-based analysis (`examples/browser-example.html`)
 
 ### Benchmark Results
 
