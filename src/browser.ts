@@ -16,25 +16,49 @@ import type { SupportedLanguage } from './core/index.js';
 
 export interface BrowserAnalyzerOptions extends AnalyzerOptions {
   /**
-   * URL to the tree-sitter.wasm file.
-   * Required for browser usage.
+   * URL to the tree-sitter.wasm file, or a pre-compiled WebAssembly.Module.
+   * String URL for browser usage, WebAssembly.Module for Cloudflare Workers.
    */
-  wasmUrl: string;
+  wasmUrl: string | WebAssembly.Module;
 
   /**
-   * URLs to language grammar WASM files.
+   * URLs to language grammar WASM files, or pre-compiled WebAssembly.Modules.
+   * String URLs for browser usage, WebAssembly.Modules for Cloudflare Workers.
    */
-  languageUrls?: Partial<Record<SupportedLanguage, string>>;
+  languageUrls?: Partial<Record<SupportedLanguage, string | WebAssembly.Module>>;
 }
 
 /**
- * Initialize the analyzer for browser usage.
+ * Initialize the analyzer for browser/worker usage.
  */
 export async function init(options: BrowserAnalyzerOptions): Promise<void> {
-  await initAnalyzer({
-    wasmPath: options.wasmUrl,
+  const initOptions: Parameters<typeof initAnalyzer>[0] = {
     taintConfig: options.taintConfig,
-  });
+  };
+
+  if (typeof options.wasmUrl === 'string') {
+    initOptions.wasmPath = options.wasmUrl;
+  } else {
+    initOptions.wasmModule = options.wasmUrl;
+  }
+
+  if (options.languageUrls) {
+    const paths: Partial<Record<SupportedLanguage, string>> = {};
+    const modules: Partial<Record<SupportedLanguage, WebAssembly.Module>> = {};
+
+    for (const [lang, value] of Object.entries(options.languageUrls)) {
+      if (typeof value === 'string') {
+        paths[lang as SupportedLanguage] = value;
+      } else if (value) {
+        modules[lang as SupportedLanguage] = value;
+      }
+    }
+
+    if (Object.keys(paths).length > 0) initOptions.languagePaths = paths;
+    if (Object.keys(modules).length > 0) initOptions.languageModules = modules;
+  }
+
+  await initAnalyzer(initOptions);
 }
 
 /**

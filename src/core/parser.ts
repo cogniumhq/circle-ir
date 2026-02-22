@@ -63,10 +63,24 @@ interface ParserOptions {
   wasmPath?: string;
 
   /**
+   * Pre-compiled WebAssembly.Module for tree-sitter.wasm.
+   * Use this for Cloudflare Workers where dynamic WASM compilation is blocked.
+   * Takes precedence over wasmPath when provided.
+   */
+  wasmModule?: WebAssembly.Module;
+
+  /**
    * Custom paths/URLs to language grammar WASM files.
    * Key is the language name, value is the path/URL.
    */
   languagePaths?: Partial<Record<SupportedLanguage, string>>;
+
+  /**
+   * Pre-compiled WebAssembly.Module for language grammars.
+   * Use this for Cloudflare Workers where dynamic WASM compilation is blocked.
+   * Takes precedence over languagePaths when provided.
+   */
+  languageModules?: Partial<Record<SupportedLanguage, WebAssembly.Module>>;
 }
 
 let parserInitialized = false;
@@ -74,6 +88,7 @@ let parserInitializing: Promise<void> | null = null;
 const loadedLanguages = new Map<SupportedLanguage, Language>();
 const loadingLanguages = new Map<SupportedLanguage, Promise<Language>>();
 let configuredLanguagePaths: Partial<Record<SupportedLanguage, string>> = {};
+let configuredLanguageModules: Partial<Record<SupportedLanguage, WebAssembly.Module>> = {};
 
 /**
  * Initialize the Tree-sitter parser runtime.
@@ -90,18 +105,35 @@ export async function initParser(options: ParserOptions = {}): Promise<void> {
     return parserInitializing;
   }
 
-  const wasmPath = options.wasmPath ?? await getDefaultWasmPath();
-
-  // Store language paths for later use in loadLanguage
+  // Store language paths/modules for later use in loadLanguage
   if (options.languagePaths) {
     configuredLanguagePaths = options.languagePaths;
+  }
+  if (options.languageModules) {
+    configuredLanguageModules = options.languageModules;
   }
 
   // Create initialization promise and store it
   parserInitializing = (async () => {
-    await Parser.init({
-      locateFile: () => wasmPath,
-    });
+    if (options.wasmModule) {
+      // Use pre-compiled module (for Cloudflare Workers where dynamic WASM compilation is blocked)
+      // instantiateWasm bypasses emscripten's default WebAssembly.instantiate(bytes) path
+      await Parser.init({
+        locateFile: () => 'web-tree-sitter.wasm',
+        instantiateWasm(imports: WebAssembly.Imports, callback: (instance: WebAssembly.Instance, module?: WebAssembly.Module) => void) {
+          const instance = new WebAssembly.Instance(options.wasmModule!, imports);
+          // Emscripten's receiveInstance expects (instance, module) for getDylinkMetadata
+          callback(instance, options.wasmModule!);
+          return instance.exports;
+        },
+      });
+
+    } else {
+      const wasmPath = options.wasmPath ?? await getDefaultWasmPath();
+      await Parser.init({
+        locateFile: () => wasmPath,
+      });
+    }
     parserInitialized = true;
     parserInitializing = null;
   })();
@@ -131,6 +163,21 @@ export async function loadLanguage(
   const loading = loadingLanguages.get(language);
   if (loading) {
     return loading;
+  }
+
+  // Check for pre-compiled module first (Cloudflare Workers)
+  const grammarName = language === 'typescript' ? 'javascript' : language;
+  const wasmModule = configuredLanguageModules[language] ?? configuredLanguageModules[grammarName as SupportedLanguage];
+  if (wasmModule) {
+    const loadPromise = (async () => {
+      // Pass WebAssembly.Module directly - web-tree-sitter's internal code
+      // handles this via `binary instanceof WebAssembly.Module` check
+      const lang = await Language.load(wasmModule as unknown as Uint8Array);
+      loadedLanguages.set(language, lang);
+      return lang;
+    })();
+    loadingLanguages.set(language, loadPromise);
+    return loadPromise;
   }
 
   // Use explicit wasmPath, configured languagePaths, or default

@@ -281,9 +281,21 @@ export interface AnalyzerOptions {
   wasmPath?: string;
 
   /**
+   * Pre-compiled WebAssembly.Module for tree-sitter.wasm.
+   * For Cloudflare Workers where dynamic WASM compilation is blocked.
+   */
+  wasmModule?: WebAssembly.Module;
+
+  /**
    * Paths to language-specific WASM files.
    */
   languagePaths?: Partial<Record<SupportedLanguage, string>>;
+
+  /**
+   * Pre-compiled WebAssembly.Module for language grammars.
+   * For Cloudflare Workers where dynamic WASM compilation is blocked.
+   */
+  languageModules?: Partial<Record<SupportedLanguage, WebAssembly.Module>>;
 
   /**
    * Custom taint configuration.
@@ -304,7 +316,9 @@ export async function initAnalyzer(options: AnalyzerOptions = {}): Promise<void>
 
   await initParser({
     wasmPath: options.wasmPath,
+    wasmModule: options.wasmModule,
     languagePaths: options.languagePaths,
+    languageModules: options.languageModules,
   });
 
   initialized = true;
@@ -950,7 +964,21 @@ export async function analyzeForAPI(
   const taint = analyzeTaint(calls, types, config);
 
   // Filter sinks in dead code
-  const filteredSinks = taint.sinks.filter(sink => !constPropResult.unreachableLines.has(sink.line));
+  let filteredSinks = taint.sinks.filter(sink => !constPropResult.unreachableLines.has(sink.line));
+
+  // Filter sinks whose arguments are proven clean (string literals, constants, etc.)
+  filteredSinks = filterCleanVariableSinks(
+    filteredSinks,
+    calls,
+    constPropResult.tainted,
+    constPropResult.symbols,
+    undefined,
+    constPropResult.sanitizedVars,
+    constPropResult.synchronizedLines
+  );
+
+  // Filter sinks wrapped by sanitizers on the same line
+  filteredSinks = filterSanitizedSinks(filteredSinks, taint.sanitizers ?? [], calls);
 
   // Generate vulnerabilities from source-sink pairs
   const vulnerabilities = findVulnerabilities(taint.sources, filteredSinks, calls, constPropResult);
@@ -1217,6 +1245,15 @@ function filterCleanVariableSinks(
 
           allArgsAreClean = false;
         } else {
+          // Check if the argument is a pure literal (string, number, boolean, etc.)
+          // Literals are inherently clean — they can't carry tainted data.
+          if (arg.literal != null) {
+            continue;
+          }
+          // Also check if the expression is a quoted string literal without variable interpolation
+          if (arg.expression && !arg.variable && isStringLiteralExpression(arg.expression)) {
+            continue;
+          }
           allArgsAreClean = false;
         }
       }
@@ -1228,6 +1265,12 @@ function filterCleanVariableSinks(
 
     return true;
   });
+}
+
+function isStringLiteralExpression(expr: string): boolean {
+  const trimmed = expr.trim();
+  return (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+         (trimmed.startsWith("'") && trimmed.endsWith("'"));
 }
 
 function filterSanitizedSinks(
