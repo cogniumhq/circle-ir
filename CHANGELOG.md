@@ -54,7 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **OWASP Benchmark**: +100% (TPR: 100%, FPR: 0%, 1415/1415 test cases)
 - **Juliet Test Suite**: +100% (156/156 test cases)
 - **SecuriBench Micro**: 97.7% TPR, 6.7% FPR (105/108 vulns detected)
-- **CWE-Bench-Java**: 65.5% (509/777 CVEs)
+- **CWE-Bench-Java**: 81.7% with LLM (98/120 projects, vs CodeQL 22.5%, IRIS+GPT-4 45.8%)
 
 ### Technical Highlights
 

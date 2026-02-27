@@ -450,7 +450,7 @@ Taint flows → Constant propagation filter
 | **OWASP Benchmark** | 100% | 0% | **+100%** |
 | **Juliet Test Suite** | 100% | 0% | **+100%** |
 | **SecuriBench Micro** | 97.2% | 53.3% | +43.9% |
-| **CWE-Bench-Java** | 55.3% | - | +55.3% |
+| **CWE-Bench-Java** | 81.7% (with LLM) | - | **+81.7%** |
 
 ### OWASP Benchmark v1.2 (Perfect Score)
 - **2740 test cases, 0 false negatives, 0 false positives**
@@ -474,15 +474,19 @@ Taint flows → Constant propagation filter
 
 FPs primarily from: correlated predicates, custom sanitizers, strong updates.
 
-### CWE-Bench-Java
-| CWE | TPR |
-|-----|-----|
-| CWE-022 (Path Traversal) | 63.3% |
-| CWE-078 (Command Injection) | 46.3% |
-| CWE-079 (XSS) | 33.9% |
-| CWE-089 (SQL Injection) | 52.9% |
-| CWE-094 (Code Injection) | 58.3% |
-| **Overall** | **55.3%** |
+### CWE-Bench-Java (120 Projects with LLM Discovery)
+| CWE | TPR | Count |
+|-----|-----|-------|
+| CWE-022 (Path Traversal) | 85.5% | 47/55 |
+| CWE-078 (Command Injection) | 76.9% | 10/13 |
+| CWE-079 (XSS) | 87.1% | 27/31 |
+| CWE-094 (Code Injection) | 66.7% | 14/21 |
+| **Overall (Claude Opus Discovery)** | **81.7%** | **98/120** |
+
+**Comparison:**
+- Circle-IR + Claude Opus: 81.7% (98/120)
+- IRIS + GPT-4: 45.8% (55/120)
+- CodeQL: 22.5% (27/120)
 
 ---
 

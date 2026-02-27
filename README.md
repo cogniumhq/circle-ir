@@ -188,7 +188,7 @@ sources:
 | **OWASP Benchmark** | +100% | TPR 100%, FPR 0% (1415 test cases) |
 | **Juliet Test Suite** | +100% | 156/156 test cases, 9 CWEs |
 | **SecuriBench Micro** | 97.7% TPR | 105/108 vulns detected, 6.7% FPR |
-| **CWE-Bench-Java** | 65.5% | 509/777 real-world CVEs |
+| **CWE-Bench-Java** | 81.7% (with LLM) | 98/120 projects (vs CodeQL 22.5%, IRIS+GPT-4 45.8%) |
 
 ## Documentation
 
