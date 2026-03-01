@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.1] - 2026-02-22
+
+### Added
+
+- **WebAssembly.Module Support**: Parser and browser initialization now accept pre-compiled `WebAssembly.Module` instances for Cloudflare Workers compatibility
+- **WASM Options**: New `wasmModule` and `languageModules` options for pre-compiled WASM to bypass dynamic compilation
+- **Custom WASM Instantiation**: Parser accepts `instantiateWasm` callback for custom WASM loading strategies
+
+### Changed
+
+- **Literal Sink Filtering**: `analyzeForAPI` now applies `filterCleanVariableSinks` and `filterSanitizedSinks` to reduce false positives
+- **Taint Treatment**: Literal arguments and quoted string expressions are now treated as clean (not tainted) to eliminate false positives on constant values
+
+### Fixed
+
+- Browser initialization now accepts `string | WebAssembly.Module` for `wasmUrl` and `languageUrls` parameters
+
 ## [3.3.0] - 2025-02-19
 
 ### Added
@@ -65,6 +82,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Per-index collection taint tracking
 - Language plugin architecture
 
+[3.3.1]: https://github.com/cogniumhq/circle-ir/releases/tag/v3.3.1
 [3.3.0]: https://github.com/cogniumhq/circle-ir/releases/tag/v3.3.0
 [3.1.0]: https://github.com/cogniumhq/circle-ir/releases/tag/v3.1.0
 [3.0.0]: https://github.com/cogniumhq/circle-ir/releases/tag/v3.0.0
