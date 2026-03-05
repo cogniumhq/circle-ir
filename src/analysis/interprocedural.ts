@@ -130,6 +130,20 @@ export function analyzeInterprocedural(
     'toString', 'valueOf', 'hashCode', 'equals', 'clone', 'clear',
   ]);
 
+  // Track safe utility methods (validation, normalization, path handling)
+  // These are utility functions that process data but don't represent security risks
+  const safeUtilityMethods = new Set([
+    // Path validation and normalization
+    'normalizePath', 'normalizeLineEndings', 'isPathWithin', 'isPathWithinAllowedDirectories',
+    'isPathAllowed', 'validatePath', 'resolvePath', 'resolve', 'relative', 'join',
+    // File utilities (reading/processing, not writing)
+    'tailFile', 'headFile', 'readFileContent', 'readFile', 'read',
+    // Pattern matching (used in validation)
+    'minimatch', 'match', 'test', 'includes', 'startsWith', 'endsWith',
+    // General validation
+    'validate', 'validateInput', 'check', 'verify',
+  ]);
+
   // Build set of sanitizer method names (methods that clean tainted data)
   // Sanitizer methods may be in formats like "encode" or "URLEncoder.encode()"
   const sanitizerMethods = new Set<string>();
@@ -167,10 +181,12 @@ export function analyzeInterprocedural(
 
     if (!targetMethod) {
       // External method call - check if tainted data is escaping
-      // Skip collection methods (data manipulation) and sanitizer methods (data cleaning)
+      // Skip collection methods (data manipulation), sanitizer methods (data cleaning),
+      // and safe utility methods (validation, normalization)
       if (taintedArgPositions.length > 0 &&
           !collectionMethods.has(call.method_name) &&
-          !sanitizerMethods.has(call.method_name)) {
+          !sanitizerMethods.has(call.method_name) &&
+          !safeUtilityMethods.has(call.method_name)) {
         // Create an "external_taint_escape" sink for this call
         // This represents tainted data being passed to code we can't analyze
         const sink: TaintSink = {

@@ -92,8 +92,19 @@ export const SANITIZER_METHODS = new Set([
   // Path Traversal Prevention
   'getCanonicalPath', 'normalize', 'toRealPath',
 
+  // JavaScript/TypeScript URL Encoding
+  'encodeURIComponent', 'encodeURI',
+
+  // JavaScript/TypeScript String Validation
+  'trim', 'match', 'test', 'replace', 'startsWith', 'includes',
+
+  // Path Validation and Normalization
+  'normalizePath', 'normalizeLineEndings', 'isPathWithin', 'isPathWithinAllowedDirectories',
+  'isPathAllowed', 'relative', 'join',
+
   // General
-  'sanitize', 'encode', 'escape', 'clean', 'filter', 'validate',
+  'sanitize', 'encode', 'escape', 'clean', 'filter', 'validate', 'validatePath',
+  'validateCityName', 'validateInput', 'sanitizeInput',
 ]);
 
 // =============================================================================
