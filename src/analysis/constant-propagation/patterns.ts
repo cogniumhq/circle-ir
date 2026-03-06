@@ -96,7 +96,7 @@ export const SANITIZER_METHODS = new Set([
   'encodeURIComponent', 'encodeURI',
 
   // JavaScript/TypeScript String Validation
-  'trim', 'match', 'test', 'replace', 'startsWith', 'includes',
+  'match', 'test', 'startsWith', 'includes',
 
   // Path Validation and Normalization
   'normalizePath', 'normalizeLineEndings', 'isPathWithin', 'isPathWithinAllowedDirectories',
