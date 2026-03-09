@@ -10,7 +10,49 @@ import {
   RustPlugin,
   registerBuiltinPlugins,
 } from '../../src/languages/plugins/index.js';
+import { BaseLanguagePlugin } from '../../src/languages/plugins/base.js';
 import { getLanguageRegistry, getLanguagePlugin } from '../../src/languages/registry.js';
+import { initParser, parse } from '../../src/core/parser.js';
+import type {
+  ExtractionContext,
+  LanguageNodeTypes,
+} from '../../src/languages/types.js';
+
+// Minimal concrete plugin that does NOT override any optional base methods,
+// so tests can exercise the BaseLanguagePlugin default implementations directly.
+class MinimalPlugin extends BaseLanguagePlugin {
+  readonly id = 'java' as const;
+  readonly name = 'Minimal';
+  readonly extensions = ['.min'];
+  readonly wasmPath = 'test.wasm';
+  readonly nodeTypes: LanguageNodeTypes = {
+    classDeclaration: [],
+    interfaceDeclaration: [],
+    enumDeclaration: [],
+    functionDeclaration: [],
+    methodDeclaration: [],
+    methodCall: [],
+    functionCall: [],
+    assignment: [],
+    variableDeclaration: [],
+    parameter: [],
+    argument: [],
+    annotation: [],
+    decorator: [],
+    importStatement: [],
+    ifStatement: [],
+    forStatement: [],
+    whileStatement: [],
+    tryStatement: [],
+    returnStatement: [],
+  };
+  extractTypes(_ctx: ExtractionContext) { return []; }
+  extractCalls(_ctx: ExtractionContext) { return []; }
+  extractImports(_ctx: ExtractionContext) { return []; }
+  extractPackage(_ctx: ExtractionContext) { return undefined; }
+  getBuiltinSources() { return []; }
+  getBuiltinSinks() { return []; }
+}
 
 describe('Language Plugins', () => {
   beforeAll(() => {
@@ -597,6 +639,114 @@ describe('Language Plugins', () => {
         const push = sinks.find(s => s.method === 'push' && s.class === 'router');
         expect(push).toBeDefined();
         expect(push?.type).toBe('open_redirect');
+      });
+    });
+  });
+
+  describe('Base Plugin Protected Methods (via JavaPlugin)', () => {
+    // Helper subclass that exposes protected methods for test coverage
+    class TestJavaPlugin extends JavaPlugin {
+      publicFindNodes(root: any, type: string): any[] {
+        return this.findNodes(root, type);
+      }
+      publicFindChildByType(node: any, type: string): any {
+        return this.findChildByType(node, type);
+      }
+    }
+
+    it('should extract package name (covers findNodes + getNodeText)', async () => {
+      const code = 'package com.example.service;\npublic class UserService {}';
+      const tree = await parse(code, 'java');
+      const plugin = new JavaPlugin();
+      const pkg = plugin.extractPackage({ filePath: 'UserService.java', sourceCode: code, tree, imports: [] } as any);
+      expect(pkg).toBe('com.example.service');
+    });
+
+    it('should return undefined when no package declaration (findNodes returns empty)', async () => {
+      const code = 'public class Test { public void method() {} }';
+      const tree = await parse(code, 'java');
+      const plugin = new JavaPlugin();
+      const pkg = plugin.extractPackage({ filePath: 'Test.java', sourceCode: code, tree, imports: [] } as any);
+      expect(pkg).toBeUndefined();
+    });
+
+    it('findNodes should find all nodes of given type recursively', async () => {
+      const code = `package com.test;\npublic class Outer {\n  public class Inner {}\n}`;
+      const tree = await parse(code, 'java');
+      const plugin = new TestJavaPlugin();
+      const classNodes = plugin.publicFindNodes(tree.rootNode, 'class_declaration');
+      expect(classNodes.length).toBeGreaterThanOrEqual(2); // Outer + Inner
+    });
+
+    it('findNodes should return empty array when type not found', async () => {
+      const code = 'public class Foo {}';
+      const tree = await parse(code, 'java');
+      const plugin = new TestJavaPlugin();
+      const nodes = plugin.publicFindNodes(tree.rootNode, 'nonexistent_node_xyz');
+      expect(nodes).toEqual([]);
+    });
+
+    it('findChildByType should find a direct child of given type', async () => {
+      const code = 'public class TestClass { int x = 5; }';
+      const tree = await parse(code, 'java');
+      const plugin = new TestJavaPlugin();
+      const classDecl = plugin.publicFindChildByType(tree.rootNode, 'class_declaration');
+      expect(classDecl).not.toBeNull();
+      expect(classDecl?.type).toBe('class_declaration');
+    });
+
+    it('findChildByType should return null when child type not found', async () => {
+      const code = 'public class TestClass {}';
+      const tree = await parse(code, 'java');
+      const plugin = new TestJavaPlugin();
+      // root node (program) has no method_declaration as a direct child
+      const result = plugin.publicFindChildByType(tree.rootNode, 'method_declaration');
+      expect(result).toBeNull();
+    });
+
+    describe('BaseLanguagePlugin default method implementations (MinimalPlugin)', () => {
+      const minimal = new MinimalPlugin();
+
+      it('detectFramework returns undefined by default', () => {
+        const result = minimal.detectFramework({} as any);
+        expect(result).toBeUndefined();
+      });
+
+      it('getReceiverType returns undefined by default', () => {
+        const result = minimal.getReceiverType({} as any, {} as any);
+        expect(result).toBeUndefined();
+      });
+
+      it('isStringLiteral returns true for string_literal node', () => {
+        expect(minimal.isStringLiteral({ type: 'string_literal' } as any)).toBe(true);
+      });
+
+      it('isStringLiteral returns true for string node', () => {
+        expect(minimal.isStringLiteral({ type: 'string' } as any)).toBe(true);
+      });
+
+      it('isStringLiteral returns false for non-string node', () => {
+        expect(minimal.isStringLiteral({ type: 'identifier' } as any)).toBe(false);
+      });
+
+      it('getStringValue extracts value from double-quoted string', () => {
+        const node = { type: 'string_literal', text: '"hello"' };
+        expect(minimal.getStringValue(node as any)).toBe('hello');
+      });
+
+      it('getStringValue extracts value from single-quoted string', () => {
+        const node = { type: 'string_literal', text: "'world'" };
+        expect(minimal.getStringValue(node as any)).toBe('world');
+      });
+
+      it('getStringValue returns text as-is when no surrounding quotes', () => {
+        const node = { type: 'string_literal', text: 'bare' };
+        expect(minimal.getStringValue(node as any)).toBe('bare');
+      });
+
+      it('getStringValue returns undefined for non-string node', () => {
+        const node = { type: 'identifier', text: 'foo' };
+        expect(minimal.getStringValue(node as any)).toBeUndefined();
       });
     });
   });
