@@ -107,7 +107,16 @@ export function propagateTaint(
   }
 
   // Step 1: Identify initial tainted definitions (from sources)
-  const initialTaint = findInitialTaint(sources, dfg, callsByLine, defsByLine);
+  const rawInitialTaint = findInitialTaint(sources, dfg, callsByLine, defsByLine);
+
+  // Filter variables added via the "next-line" heuristic that are actually the
+  // result of a sanitizer call.  The source variable itself (tv.line ===
+  // tv.sourceLine) is always tainted; next-line additions need an extra check.
+  const initialTaint = rawInitialTaint.filter(tv => {
+    if (tv.line === tv.sourceLine) return true;
+    const sanCheck = checkSanitized(tv.sourceLine, tv.line, tv.sourceType, sanitizersByLine);
+    return !sanCheck.sanitized;
+  });
   taintedVars.push(...initialTaint);
 
   // Step 2: Propagate taint through def-use chains
@@ -303,28 +312,66 @@ function propagateThroughChains(
   return propagated;
 }
 
+// Sink types recognised by the sanitizer patterns.  Used to distinguish
+// "propagation context" (sinkType is a source type like 'request_param') from
+// "sink-check context" (sinkType is a real sink type like 'sql_injection').
+const KNOWN_SINK_TYPES = new Set<string>([
+  'sql_injection', 'xss', 'path_traversal', 'command_injection',
+  'ssrf', 'ldap_injection', 'xpath_injection', 'log_injection',
+  'xxe', 'deserialization', 'code_injection',
+]);
+
 /**
- * Check if a taint flow is sanitized between two points.
+ * Check if a taint flow is sanitized at the target line.
+ *
+ * Strategy: check for a sanitizer call AT `toLine` only — NOT a range scan
+ * between fromLine and toLine. A range scan is intentionally avoided because
+ * it was too aggressive: a sanitizer on a *different* variable (e.g.
+ * `clean = sanitize(name); sink(name)`) would incorrectly mark the unsanitized
+ * path as safe.
+ *
+ * Checking AT `toLine` is variable-specific: in the propagation chain
+ * `from_def → to_def`, if there is a sanitizer at `to_def.line`, the
+ * assignment is `to_def.variable = sanitizer(from_def.variable)` — the
+ * result variable is the sanitized output and taint should not propagate.
+ *
+ * Context differentiation via `sinkType`:
+ *   Known sink type (e.g. 'sql_injection') — sink-check context; require the
+ *     sanitizer to cover that specific type.
+ *   Unknown / source type (e.g. 'request_param') — propagation context; accept
+ *     any recognised sanitizer, since the eventual sink type is not yet known.
+ *     This may miss cross-type scenarios (XSS sanitizer applied to data that
+ *     later flows to a SQL sink) but eliminates false positives for correctly
+ *     sanitized code.
  */
 function checkSanitized(
   _fromLine: number,
-  _toLine: number,
-  _sinkType: string,
-  _sanitizersByLine: Map<number, TaintSanitizer[]>
+  toLine: number,
+  sinkType: string,
+  sanitizersByLine: Map<number, TaintSanitizer[]>
 ): { sanitized: boolean; sanitizer?: TaintSanitizer } {
-  // NOTE: The previous line-based sanitizer check was too aggressive.
-  // It would mark a flow as sanitized if ANY sanitizer existed between
-  // source and sink lines, even if that sanitizer was applied to a
-  // different variable (e.g., clean = sanitize(name); println(name);)
-  //
-  // The correct approach is to rely on:
-  // 1. DFG-based tracking - the tainted variable must flow through a sanitizer
-  // 2. The analyzer's sanitizedVars from constant propagation - which correctly
-  //    tracks which specific variables were sanitized
-  //
-  // For now, return false and let the higher-level filtering handle sanitization.
-  // This prevents false negatives where unsanitized variables are incorrectly
-  // marked as safe just because a sanitizer exists somewhere on adjacent lines.
+  const sanitizersAtTarget = sanitizersByLine.get(toLine);
+  if (!sanitizersAtTarget || sanitizersAtTarget.length === 0) {
+    return { sanitized: false };
+  }
+
+  const isKnownSinkType = KNOWN_SINK_TYPES.has(sinkType);
+
+  for (const san of sanitizersAtTarget) {
+    if (isKnownSinkType) {
+      // Sink-check context: sanitizer must cover this specific vulnerability type.
+      if (san.sanitizes.includes(sinkType as SinkType)) {
+        return { sanitized: true, sanitizer: san };
+      }
+    } else {
+      // Propagation context: accept any sanitizer that covers at least one
+      // sink type (i.e. is a genuine sanitizer method, not a no-op stub).
+      if (san.sanitizes.length > 0) {
+        return { sanitized: true, sanitizer: san };
+      }
+    }
+  }
+
   return { sanitized: false };
 }
 
