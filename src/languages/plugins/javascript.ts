@@ -210,6 +210,82 @@ export class JavaScriptPlugin extends BaseLanguagePlugin {
         returnTainted: true,
       },
 
+      // Fastify-specific sources (request object)
+      {
+        method: 'raw',
+        class: 'request',
+        type: 'http_param',
+        severity: 'high',
+        confidence: 0.85,
+        returnTainted: true,
+      },
+      {
+        method: 'hostname',
+        class: 'request',
+        type: 'http_header',
+        severity: 'medium',
+        confidence: 0.8,
+        returnTainted: true,
+      },
+
+      // Koa context sources (ctx.* and ctx.request.*)
+      {
+        method: 'header',
+        class: 'ctx',
+        type: 'http_header',
+        severity: 'high',
+        confidence: 0.85,
+        returnTainted: true,
+      },
+      {
+        method: 'headers',
+        class: 'ctx',
+        type: 'http_header',
+        severity: 'high',
+        confidence: 0.85,
+        returnTainted: true,
+      },
+      {
+        method: 'host',
+        class: 'ctx',
+        type: 'http_header',
+        severity: 'medium',
+        confidence: 0.8,
+        returnTainted: true,
+      },
+      {
+        method: 'hostname',
+        class: 'ctx',
+        type: 'http_header',
+        severity: 'medium',
+        confidence: 0.8,
+        returnTainted: true,
+      },
+      {
+        method: 'path',
+        class: 'ctx',
+        type: 'http_path',
+        severity: 'high',
+        confidence: 0.85,
+        returnTainted: true,
+      },
+      {
+        method: 'url',
+        class: 'ctx',
+        type: 'http_path',
+        severity: 'high',
+        confidence: 0.85,
+        returnTainted: true,
+      },
+      {
+        method: 'querystring',
+        class: 'ctx',
+        type: 'http_param',
+        severity: 'high',
+        confidence: 0.85,
+        returnTainted: true,
+      },
+
       // DOM sources (for browser code)
       {
         method: 'location',
@@ -554,6 +630,21 @@ export class JavaScriptPlugin extends BaseLanguagePlugin {
       },
       {
         method: 'raw',
+        type: 'sql_injection',
+        cwe: 'CWE-89',
+        severity: 'critical',
+        argPositions: [0],
+      },
+      // Prisma ORM - unsafe raw query methods ($executeRaw/$queryRaw with template literals are safe/parameterized)
+      {
+        method: '$executeRawUnsafe',
+        type: 'sql_injection',
+        cwe: 'CWE-89',
+        severity: 'critical',
+        argPositions: [0],
+      },
+      {
+        method: '$queryRawUnsafe',
         type: 'sql_injection',
         cwe: 'CWE-89',
         severity: 'critical',

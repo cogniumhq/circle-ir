@@ -641,6 +641,86 @@ describe('Language Plugins', () => {
         expect(push?.type).toBe('open_redirect');
       });
     });
+
+    describe('Fastify Sources', () => {
+      it('should have request.raw source (raw HTTP request)', () => {
+        const sources = plugin.getBuiltinSources();
+        const raw = sources.find(s => s.method === 'raw' && s.class === 'request');
+        expect(raw).toBeDefined();
+        expect(raw?.type).toBe('http_param');
+        expect(raw?.severity).toBe('high');
+      });
+
+      it('should have request.hostname source (http_header)', () => {
+        const sources = plugin.getBuiltinSources();
+        const hostname = sources.find(s => s.method === 'hostname' && s.class === 'request');
+        expect(hostname).toBeDefined();
+        expect(hostname?.type).toBe('http_header');
+      });
+    });
+
+    describe('Koa Sources', () => {
+      it('should have ctx.header and ctx.headers sources', () => {
+        const sources = plugin.getBuiltinSources();
+        const header = sources.find(s => s.method === 'header' && s.class === 'ctx');
+        expect(header).toBeDefined();
+        expect(header?.type).toBe('http_header');
+
+        const headers = sources.find(s => s.method === 'headers' && s.class === 'ctx');
+        expect(headers).toBeDefined();
+        expect(headers?.type).toBe('http_header');
+      });
+
+      it('should have ctx.host and ctx.hostname sources', () => {
+        const sources = plugin.getBuiltinSources();
+        const host = sources.find(s => s.method === 'host' && s.class === 'ctx');
+        expect(host).toBeDefined();
+        expect(host?.type).toBe('http_header');
+
+        const hostname = sources.find(s => s.method === 'hostname' && s.class === 'ctx');
+        expect(hostname).toBeDefined();
+        expect(hostname?.type).toBe('http_header');
+      });
+
+      it('should have ctx.path and ctx.url sources', () => {
+        const sources = plugin.getBuiltinSources();
+        const path = sources.find(s => s.method === 'path' && s.class === 'ctx');
+        expect(path).toBeDefined();
+        expect(path?.type).toBe('http_path');
+
+        const url = sources.find(s => s.method === 'url' && s.class === 'ctx');
+        expect(url).toBeDefined();
+        expect(url?.type).toBe('http_path');
+      });
+
+      it('should have ctx.querystring source', () => {
+        const sources = plugin.getBuiltinSources();
+        const qs = sources.find(s => s.method === 'querystring' && s.class === 'ctx');
+        expect(qs).toBeDefined();
+        expect(qs?.type).toBe('http_param');
+      });
+    });
+
+    describe('Prisma Sinks', () => {
+      it('should have $executeRawUnsafe sink (CWE-89)', () => {
+        const sinks = plugin.getBuiltinSinks();
+        const sink = sinks.find(s => s.method === '$executeRawUnsafe');
+        expect(sink).toBeDefined();
+        expect(sink?.type).toBe('sql_injection');
+        expect(sink?.cwe).toBe('CWE-89');
+        expect(sink?.severity).toBe('critical');
+        expect(sink?.argPositions).toContain(0);
+      });
+
+      it('should have $queryRawUnsafe sink (CWE-89)', () => {
+        const sinks = plugin.getBuiltinSinks();
+        const sink = sinks.find(s => s.method === '$queryRawUnsafe');
+        expect(sink).toBeDefined();
+        expect(sink?.type).toBe('sql_injection');
+        expect(sink?.cwe).toBe('CWE-89');
+        expect(sink?.severity).toBe('critical');
+      });
+    });
   });
 
   describe('Base Plugin Protected Methods (via JavaPlugin)', () => {

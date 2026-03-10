@@ -273,3 +273,203 @@ public class Test {
     expect(bToSumChain).toBeDefined();
   });
 });
+
+describe('JavaScript DFG', () => {
+  beforeAll(async () => {
+    await initParser();
+  });
+
+  it('should extract top-level const/let declarations', async () => {
+    const code = `const x = 5;\nlet y = x;`;
+    const tree = await parse(code, 'javascript');
+    const dfg = buildDFG(tree, undefined, 'javascript');
+
+    const xDef = dfg.defs.find(d => d.variable === 'x');
+    expect(xDef).toBeDefined();
+    expect(xDef!.kind).toBe('local');
+
+    const yDef = dfg.defs.find(d => d.variable === 'y');
+    expect(yDef).toBeDefined();
+    expect(yDef!.kind).toBe('local');
+  });
+
+  it('should track use of top-level variable in subsequent declaration', async () => {
+    const code = `const x = 5;\nconst y = x + 1;`;
+    const tree = await parse(code, 'javascript');
+    const dfg = buildDFG(tree, undefined, 'javascript');
+
+    const xDef = dfg.defs.find(d => d.variable === 'x');
+    const xUse = dfg.uses.find(u => u.variable === 'x');
+
+    expect(xDef).toBeDefined();
+    expect(xUse).toBeDefined();
+    expect(xUse!.def_id).toBe(xDef!.id);
+  });
+
+  it('should create def-use chain for top-level declarations', async () => {
+    const code = `const x = 5;\nconst y = x;`;
+    const tree = await parse(code, 'javascript');
+    const dfg = buildDFG(tree, undefined, 'javascript');
+
+    expect(dfg.chains).toBeDefined();
+    const xDef = dfg.defs.find(d => d.variable === 'x');
+    const yDef = dfg.defs.find(d => d.variable === 'y');
+
+    const chain = dfg.chains!.find(c => c.from_def === xDef!.id && c.to_def === yDef!.id);
+    expect(chain).toBeDefined();
+    expect(chain!.via).toBe('x');
+  });
+
+  it('should extract object destructuring parameters', async () => {
+    const code = `function handler({ name, age }) { return name; }`;
+    const tree = await parse(code, 'javascript');
+    const dfg = buildDFG(tree, undefined, 'javascript');
+
+    const nameDef = dfg.defs.find(d => d.variable === 'name');
+    expect(nameDef).toBeDefined();
+    expect(nameDef!.kind).toBe('param');
+
+    const ageDef = dfg.defs.find(d => d.variable === 'age');
+    expect(ageDef).toBeDefined();
+    expect(ageDef!.kind).toBe('param');
+  });
+
+  it('should extract for-in loop variable definition', async () => {
+    const code = `function process(obj) { for (const key in obj) { console.log(key); } }`;
+    const tree = await parse(code, 'javascript');
+    const dfg = buildDFG(tree, undefined, 'javascript');
+
+    const keyDef = dfg.defs.find(d => d.variable === 'key');
+    expect(keyDef).toBeDefined();
+    expect(keyDef!.kind).toBe('local');
+
+    const keyUses = dfg.uses.filter(u => u.variable === 'key');
+    expect(keyUses.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('Python DFG', () => {
+  beforeAll(async () => {
+    await initParser();
+  });
+
+  it('should return a valid DFG structure for Python code', async () => {
+    const code = `
+def foo(x):
+    y = x + 1
+    return y
+`;
+    const tree = await parse(code, 'python');
+    const dfg = buildDFG(tree, undefined, 'python');
+
+    expect(dfg).toBeDefined();
+    expect(Array.isArray(dfg.defs)).toBe(true);
+    expect(Array.isArray(dfg.uses)).toBe(true);
+  });
+
+  it('should return empty defs for plain Python assignments (not yet supported)', async () => {
+    const code = `x = 5\ny = x + 1`;
+    const tree = await parse(code, 'python');
+    const dfg = buildDFG(tree, undefined, 'python');
+
+    // Python variable assignments are not currently extracted by the DFG builder
+    expect(dfg.defs.length).toBe(0);
+    expect(dfg.uses.length).toBe(0);
+  });
+
+  it('should return empty defs for Python function definitions (not yet supported)', async () => {
+    const code = `
+def greet(name):
+    message = "Hello, " + name
+    return message
+`;
+    const tree = await parse(code, 'python');
+    const dfg = buildDFG(tree, undefined, 'python');
+
+    // Python function params and local vars are not currently extracted
+    expect(dfg.defs.length).toBe(0);
+  });
+
+  it('should return a valid chains array for Python code', async () => {
+    const code = `z = 10`;
+    const tree = await parse(code, 'python');
+    const dfg = buildDFG(tree, undefined, 'python');
+
+    expect(Array.isArray(dfg.chains)).toBe(true);
+  });
+});
+
+describe('Rust DFG', () => {
+  beforeAll(async () => {
+    await initParser();
+  });
+
+  it('should extract function parameters as param defs', async () => {
+    const code = `fn add(x: i32, y: i32) -> i32 { x + y }`;
+    const tree = await parse(code, 'rust');
+    const dfg = buildDFG(tree, undefined, 'rust');
+
+    const xDef = dfg.defs.find(d => d.variable === 'x');
+    expect(xDef).toBeDefined();
+    expect(xDef!.kind).toBe('param');
+
+    const yDef = dfg.defs.find(d => d.variable === 'y');
+    expect(yDef).toBeDefined();
+    expect(yDef!.kind).toBe('param');
+  });
+
+  it('should extract let bindings as local defs', async () => {
+    const code = `fn process(input: i32) -> i32 {\n    let result = input + 1;\n    result\n}`;
+    const tree = await parse(code, 'rust');
+    const dfg = buildDFG(tree, undefined, 'rust');
+
+    const inputDef = dfg.defs.find(d => d.variable === 'input');
+    expect(inputDef).toBeDefined();
+    expect(inputDef!.kind).toBe('param');
+
+    const resultDef = dfg.defs.find(d => d.variable === 'result');
+    expect(resultDef).toBeDefined();
+    expect(resultDef!.kind).toBe('local');
+  });
+
+  it('should link uses to their reaching definitions', async () => {
+    const code = `fn compute(a: i32) -> i32 {\n    let b = a + 1;\n    b\n}`;
+    const tree = await parse(code, 'rust');
+    const dfg = buildDFG(tree, undefined, 'rust');
+
+    const aDef = dfg.defs.find(d => d.variable === 'a' && d.kind === 'param');
+    expect(aDef).toBeDefined();
+
+    const aUse = dfg.uses.find(u => u.variable === 'a');
+    expect(aUse).toBeDefined();
+    expect(aUse!.def_id).toBe(aDef!.id);
+  });
+
+  it('should extract mutable variable reassignment as new def', async () => {
+    const code = `fn counter() {\n    let mut count = 0;\n    count = count + 1;\n}`;
+    const tree = await parse(code, 'rust');
+    const dfg = buildDFG(tree, undefined, 'rust');
+
+    const countDefs = dfg.defs.filter(d => d.variable === 'count');
+    expect(countDefs.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('should compute def-use chains for Rust let bindings', async () => {
+    const code = `fn flow(x: i32) -> i32 {\n    let y = x;\n    let z = y + 1;\n    z\n}`;
+    const tree = await parse(code, 'rust');
+    const dfg = buildDFG(tree, undefined, 'rust');
+
+    expect(dfg.chains).toBeDefined();
+    expect(dfg.chains!.length).toBeGreaterThanOrEqual(1);
+
+    const xDef = dfg.defs.find(d => d.variable === 'x');
+    const yDef = dfg.defs.find(d => d.variable === 'y');
+    expect(xDef).toBeDefined();
+    expect(yDef).toBeDefined();
+
+    const xToYChain = dfg.chains!.find(
+      c => c.from_def === xDef!.id && c.to_def === yDef!.id && c.via === 'x'
+    );
+    expect(xToYChain).toBeDefined();
+  });
+});
