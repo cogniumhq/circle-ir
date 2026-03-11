@@ -85,6 +85,10 @@ export function extractCalls(tree: Tree, cache?: NodeCache, language?: string): 
   const isPython = detectedLanguage === 'python';
   const isRust = detectedLanguage === 'rust';
 
+  if (detectedLanguage === 'bash') {
+    return extractBashCalls(tree, cache);
+  }
+
   if (isRust) {
     return extractRustCalls(tree, cache);
   }
@@ -1046,6 +1050,137 @@ function inferTypeFromReceiverName(receiver: string): string | null {
 
   const lowerReceiver = receiver.toLowerCase();
   return patterns[lowerReceiver] ?? null;
+}
+
+// =============================================================================
+// Bash Call Extraction
+// =============================================================================
+
+/**
+ * Extract all commands (treated as calls) from a Bash tree.
+ * In Bash, every command invocation is a `command` node in the AST.
+ */
+function extractBashCalls(tree: Tree, cache?: NodeCache): CallInfo[] {
+  const calls: CallInfo[] = [];
+
+  const commands = getNodesFromCache(tree.rootNode, 'command', cache);
+  for (const cmd of commands) {
+    const callInfo = extractBashCommandInfo(cmd);
+    if (callInfo) {
+      calls.push(callInfo);
+    }
+  }
+
+  return calls;
+}
+
+/**
+ * Extract call information from a Bash `command` AST node.
+ * The `name` field holds the command name; remaining children are arguments.
+ */
+function extractBashCommandInfo(node: Node): CallInfo | null {
+  // tree-sitter-bash: command has a 'name' field for the command word
+  const nameNode = node.childForFieldName('name');
+  if (!nameNode) return null;
+
+  const commandName = getNodeText(nameNode);
+  if (!commandName) return null;
+
+  // Collect arguments: all non-name, non-redirect children
+  const args: ArgumentInfo[] = [];
+  let position = 0;
+
+  for (let i = 0; i < node.childCount; i++) {
+    const child = node.child(i);
+    if (!child) continue;
+    if (child === nameNode) continue;
+    // Skip I/O redirects and heredoc operators
+    if (
+      child.type.includes('redirect') ||
+      child.type === 'heredoc_body' ||
+      child.type === 'file_descriptor'
+    ) {
+      continue;
+    }
+
+    const expression = getNodeText(child);
+    if (!expression.trim()) continue;
+
+    // Extract variable reference if argument is/contains a variable expansion
+    const variable = extractBashVariableRef(child);
+
+    args.push({
+      position: position++,
+      expression,
+      variable,
+      literal: null,
+    });
+  }
+
+  // Find enclosing function_definition (if any)
+  const inMethod = findBashEnclosingFunction(node);
+
+  return {
+    method_name: commandName,
+    receiver: null,
+    arguments: args,
+    location: {
+      line: node.startPosition.row + 1,
+      column: node.startPosition.column,
+    },
+    in_method: inMethod,
+    resolved: false,
+    resolution: { status: 'external_method' },
+  };
+}
+
+/**
+ * Try to extract the primary variable name from a Bash argument node.
+ * Handles `$VAR`, `${VAR}`, `"$VAR"`, and concatenations.
+ */
+function extractBashVariableRef(node: Node): string | null {
+  const type = node.type;
+
+  // Direct expansion: $VAR or ${VAR}
+  if (type === 'simple_expansion' || type === 'expansion') {
+    return getNodeText(node).replace(/^\$\{?/, '').replace(/\}$/, '');
+  }
+
+  // String that wraps expansions: "$VAR"
+  if (type === 'string' || type === 'concatenation') {
+    for (let i = 0; i < node.childCount; i++) {
+      const child = node.child(i);
+      if (!child) continue;
+      if (child.type === 'simple_expansion' || child.type === 'expansion') {
+        return getNodeText(child).replace(/^\$\{?/, '').replace(/\}$/, '');
+      }
+    }
+  }
+
+  // Plain word that starts with $
+  if (type === 'word') {
+    const text = getNodeText(node);
+    if (text.startsWith('$')) {
+      return text.slice(1).replace(/^\{/, '').replace(/\}$/, '');
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Walk up the AST to find the enclosing function_definition, if any.
+ */
+function findBashEnclosingFunction(node: Node): string | null {
+  let current = node.parent;
+  while (current) {
+    if (current.type === 'function_definition') {
+      const nameNode = current.childForFieldName('name');
+      return nameNode ? getNodeText(nameNode) : null;
+    }
+    current = current.parent;
+  }
+  return null;
 }
 
 // =============================================================================

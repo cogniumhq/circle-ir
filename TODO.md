@@ -46,7 +46,7 @@ Current overall coverage: ~80%. Target: ≥75% (met). Areas below threshold that
 | JavaScript/TS | ✅ Complete | ✅ Express, Node.js | ✅ SQL, Cmd, XSS, Path | 100% NodeGoat | - |
 | Python | ✅ Complete | ⚠️ Basic | ⚠️ Basic | 25.2% OWASP | P1 |
 | Rust | ✅ Complete | ⚠️ Actix, Rocket | ⚠️ Diesel, Tokio | 100% CWE-Bench | - |
-| Bash/Shell | ✅ Complete | ⚠️ Basic (read, curl, wget) | ⚠️ Basic (eval, sh -c, mysql, cat) | Not benchmarked | P2 |
+| Bash/Shell | ✅ Complete | ⚠️ Basic (read only) | ✅ eval, sh/bash -c, mysql/psql, cat/rm/cp/mv, curl/wget | 68.2% TPR, 0% FPR (31 synthetic) | P2 |
 | Go | ❌ No parser | - | - | - | P3 |
 
 ### Pending Language Improvements

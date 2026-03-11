@@ -325,17 +325,13 @@ describe('Language Plugins', () => {
       const sources = plugin.getBuiltinSources();
       expect(sources.length).toBeGreaterThan(0);
 
+      // Only 'read' is a source; curl/wget are excluded (they're also sinks)
       const readSource = sources.find(s => s.method === 'read');
       expect(readSource).toBeDefined();
-      expect(readSource?.type).toBe('user_input');
+      expect(readSource?.type).toBe('io_input');
 
-      const curlSource = sources.find(s => s.method === 'curl');
-      expect(curlSource).toBeDefined();
-      expect(curlSource?.type).toBe('http_response');
-
-      const wgetSource = sources.find(s => s.method === 'wget');
-      expect(wgetSource).toBeDefined();
-      expect(wgetSource?.type).toBe('http_response');
+      expect(sources.find(s => s.method === 'curl')).toBeUndefined();
+      expect(sources.find(s => s.method === 'wget')).toBeUndefined();
     });
 
     it('should have builtin sinks', () => {

@@ -5,7 +5,7 @@
  * This is the core analyzer - for LLM-enhanced analysis, use circle-ir-ai.
  */
 
-import type { CircleIR, AnalysisResponse, Vulnerability, Enriched, TaintSource, TypeInfo } from './types/index.js';
+import type { CircleIR, AnalysisResponse, Vulnerability, Enriched, TaintSource, TypeInfo, SourceType, SinkType } from './types/index.js';
 import type { TaintConfig } from './types/config.js';
 import type { FieldTaintInfo } from './analysis/constant-propagation/types.js';
 import {
@@ -22,7 +22,7 @@ import {
   type SupportedLanguage,
 } from './core/index.js';
 import { analyzeTaint, getDefaultConfig, detectUnresolved, propagateTaint, analyzeInterprocedural, findTaintBridges, analyzeConstantPropagation, isFalsePositive, isCorrelatedPredicateFP } from './analysis/index.js';
-import { registerBuiltinPlugins } from './languages/index.js';
+import { registerBuiltinPlugins, getLanguagePlugin } from './languages/index.js';
 import { logger } from './utils/logger.js';
 
 /**
@@ -459,6 +459,18 @@ export async function analyze(
       'member_expression',
       'assignment_expression',
     ]);
+  } else if (language === 'bash') {
+    nodeTypesToCollect = new Set([
+      // Bash AST nodes
+      'command',
+      'function_definition',
+      'variable_assignment',
+      'declaration_command',
+      'if_statement',
+      'for_statement',
+      'c_style_for_statement',
+      'while_statement',
+    ]);
   } else {
     nodeTypesToCollect = new Set([
       // Java AST nodes
@@ -496,7 +508,46 @@ export async function analyze(
 
   // First, do a preliminary taint analysis to find inter-procedural parameter sources
   // These need to be passed to constant propagation so it can track taint from method parameters
-  const baseConfig = options.taintConfig ?? getDefaultConfig();
+  let baseConfig = options.taintConfig ?? getDefaultConfig();
+
+  // Merge language plugin built-in sources/sinks into the config.
+  // This handles languages (e.g. Bash) whose patterns are defined on the plugin
+  // rather than in YAML config files loaded by getDefaultConfig().
+  if (!options.taintConfig) {
+    const plugin = getLanguagePlugin(language);
+    if (plugin) {
+      const pluginSources = plugin.getBuiltinSources();
+      const pluginSinks = plugin.getBuiltinSinks();
+      if (pluginSources.length > 0 || pluginSinks.length > 0) {
+        baseConfig = {
+          ...baseConfig,
+          sources: [
+            ...baseConfig.sources,
+            ...pluginSources.map(s => ({
+              method: s.method,
+              class: s.class,
+              annotation: s.annotation,
+              type: s.type as SourceType,
+              severity: s.severity,
+              return_tainted: s.returnTainted ?? false,
+            })),
+          ],
+          sinks: [
+            ...baseConfig.sinks,
+            ...pluginSinks.map(s => ({
+              method: s.method,
+              class: s.class,
+              type: s.type as SinkType,
+              cwe: s.cwe,
+              severity: s.severity,
+              arg_positions: s.argPositions,
+            })),
+          ],
+        };
+      }
+    }
+  }
+
   const preliminaryTaint = analyzeTaint(calls, types, baseConfig);
 
   // Extract inter-procedural parameter sources
