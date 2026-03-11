@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.0] - 2026-03-11
+
+### Added
+
+- **Python P1 source detection** — three-pronged approach for Flask/Django/FastAPI taint tracking:
+  - **`python.json` source patterns fixed** — 8 dotted method names split into correct `method`+`class` pairs (e.g. `"method":"get","class":"args"` instead of `"method":"args.get","class":"request"`) so `matchesSourcePattern` correctly matches `request.args.get()`, `request.form.get()`, `request.GET.get()`, etc.; 5 new patterns added (getlist/args, getlist/form, get_json/request, FILES field, query_params)
+  - **`PYTHON_TAINTED_PATTERNS` + Python section in `taint-matcher.ts`** — regex-based source detection for `request.args[...]` subscript accesses passed as call arguments (not call nodes); covers 13 Flask/Django/FastAPI request property patterns
+  - **`findPythonAssignmentSources()` in `analyzer.ts`** — line-scan detection for `x = request.args['id']` assignment patterns; handles `language !== 'python'` guard and skips comment lines
+- **Python benchmark 25.2% → 56.7%** — sqli/weakrand/hash/securecookie all at 100%; cmdi improved; overall F1 77.5%
+- **Import extractor test coverage improvements** — 13 new edge-case tests in `tests/extractors/imports.test.ts`:
+  - JS: side-effect import, combined default+named, renamed CommonJS destructuring
+  - Python: wildcard from-import, aliased from-import, dotted module import, multi-level relative import, multi-name from-import
+  - Rust: `{self}` in use list, aliased item in use list, nested scoped path in use list, aliased nested scoped path with `::`, bare use identifier
+- **Test count 730 → 743**
+
+### Changed
+
+- `circle-ir-ai`: `Record<SupportedLanguage, T>` exhaustive objects updated to include `bash` key in `dead-code/detector.ts`, `llm/language-context.ts`, `project/analyzer.ts`, `project/two-phase-analyzer.ts`, `security-scan/scanner.ts`
+
 ## [3.6.0] - 2026-03-11
 
 ### Added

@@ -9,6 +9,26 @@ import type { TaintConfig, SourcePattern, SinkPattern, SanitizerPattern } from '
 import { getDefaultConfig } from './config-loader.js';
 
 /**
+ * Python tainted access patterns (regex-based).
+ * Handles request.args['id'], request.GET['key'] etc. (subscript access — not call nodes).
+ */
+const PYTHON_TAINTED_PATTERNS: Array<{ pattern: RegExp; sourceType: SourceType }> = [
+  { pattern: /\brequest\.args\b/,         sourceType: 'http_param'  },
+  { pattern: /\brequest\.form\b/,         sourceType: 'http_body'   },
+  { pattern: /\brequest\.json\b/,         sourceType: 'http_body'   },
+  { pattern: /\brequest\.data\b/,         sourceType: 'http_body'   },
+  { pattern: /\brequest\.files?\b/,       sourceType: 'file_input'  },
+  { pattern: /\brequest\.headers?\b/,     sourceType: 'http_header' },
+  { pattern: /\brequest\.cookies\b/,      sourceType: 'http_cookie' },
+  { pattern: /\brequest\.GET\b/,          sourceType: 'http_param'  },
+  { pattern: /\brequest\.POST\b/,         sourceType: 'http_body'   },
+  { pattern: /\brequest\.META\b/,         sourceType: 'http_header' },
+  { pattern: /\brequest\.FILES\b/,        sourceType: 'file_input'  },
+  { pattern: /\brequest\.query_params\b/, sourceType: 'http_param'  },
+  { pattern: /\brequest\.path_params\b/,  sourceType: 'http_param'  },
+];
+
+/**
  * Analyze code for taint sources, sinks, and sanitizers.
  */
 export function analyzeTaint(
@@ -126,6 +146,32 @@ function findSources(
               confidence: 1.0,
             });
           }
+        }
+      }
+    }
+  }
+
+  // Python/Flask/Django: Detect request property access patterns as sources.
+  // Handles subscript access like request.args['id'] which is NOT a call node —
+  // instead it appears as an argument expression inside the actual sink call.
+  for (const call of calls) {
+    for (const arg of call.arguments) {
+      if (!arg.expression) continue;
+      for (const { pattern, sourceType } of PYTHON_TAINTED_PATTERNS) {
+        if (pattern.test(arg.expression)) {
+          const alreadyExists = sources.some(
+            s => s.line === call.location.line && s.type === sourceType
+          );
+          if (!alreadyExists) {
+            sources.push({
+              type: sourceType,
+              location: `${arg.expression} in ${call.in_method || 'anonymous'}`,
+              severity: 'high',
+              line: call.location.line,
+              confidence: 1.0,
+            });
+          }
+          break;
         }
       }
     }

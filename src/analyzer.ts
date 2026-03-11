@@ -152,6 +152,27 @@ const JS_TAINTED_PATTERNS = [
 ];
 
 /**
+ * Python/Flask/Django tainted request access patterns.
+ * Used to detect sources in assignments like: user_id = request.args.get('id')
+ * Also covers subscript access: user_id = request.args['id']
+ */
+const PYTHON_TAINTED_PATTERNS = [
+  { pattern: /\brequest\.args\b/,         type: 'http_param'  as const },
+  { pattern: /\brequest\.form\b/,         type: 'http_body'   as const },
+  { pattern: /\brequest\.json\b/,         type: 'http_body'   as const },
+  { pattern: /\brequest\.data\b/,         type: 'http_body'   as const },
+  { pattern: /\brequest\.files?\b/,       type: 'file_input'  as const },
+  { pattern: /\brequest\.headers?\b/,     type: 'http_header' as const },
+  { pattern: /\brequest\.cookies\b/,      type: 'http_cookie' as const },
+  { pattern: /\brequest\.GET\b/,          type: 'http_param'  as const },
+  { pattern: /\brequest\.POST\b/,         type: 'http_body'   as const },
+  { pattern: /\brequest\.META\b/,         type: 'http_header' as const },
+  { pattern: /\brequest\.FILES\b/,        type: 'file_input'  as const },
+  { pattern: /\brequest\.query_params\b/, type: 'http_param'  as const },
+  { pattern: /\brequest\.path_params\b/,  type: 'http_param'  as const },
+];
+
+/**
  * Find JavaScript taint sources from variable assignments.
  * Detects patterns like: var userId = req.query.id
  */
@@ -197,6 +218,59 @@ function findJavaScriptAssignmentSources(
             });
           }
           break; // Found a match, no need to check more patterns
+        }
+      }
+    }
+  }
+
+  return sources;
+}
+
+/**
+ * Find Python taint sources from variable assignments and subscript access.
+ * Detects patterns like: user_id = request.args.get('id') or request.args['id']
+ */
+function findPythonAssignmentSources(
+  sourceCode: string,
+  language: string
+): TaintSource[] {
+  const sources: TaintSource[] = [];
+
+  if (language !== 'python') {
+    return sources;
+  }
+
+  const lines = sourceCode.split('\n');
+
+  for (let lineNum = 0; lineNum < lines.length; lineNum++) {
+    const line = lines[lineNum];
+    const lineNumber = lineNum + 1;
+
+    // Skip comment lines
+    if (line.trimStart().startsWith('#')) continue;
+
+    // Look for assignments: x = ... or x: type = ...
+    const assignmentMatch = line.match(/^(\s*\w[\w.]*)\s*(?::\s*\w[\w\[\], .]*)?\s*=\s*(.+)/);
+    if (assignmentMatch) {
+      const rhs = assignmentMatch[2];
+      for (const { pattern, type } of PYTHON_TAINTED_PATTERNS) {
+        if (pattern.test(rhs)) {
+          const varMatch = line.match(/^\s*(\w+)\s*/);
+          const varName = varMatch ? varMatch[1] : 'unknown';
+          const alreadyExists = sources.some(
+            s => s.line === lineNumber && s.type === type
+          );
+          if (!alreadyExists) {
+            sources.push({
+              type,
+              location: `${varName} = ${rhs.trim().substring(0, 50)}${rhs.length > 50 ? '...' : ''}`,
+              severity: 'high',
+              line: lineNumber,
+              confidence: 0.95,
+              variable: varName,
+            });
+          }
+          break;
         }
       }
     }
@@ -581,6 +655,10 @@ export async function analyze(
   // Add sources for JavaScript variable assignments with tainted patterns
   const jsAssignmentSources = findJavaScriptAssignmentSources(code, language);
   taint.sources.push(...jsAssignmentSources);
+
+  // Add sources for Python variable assignments with tainted request patterns
+  const pythonAssignmentSources = findPythonAssignmentSources(code, language);
+  taint.sources.push(...pythonAssignmentSources);
 
   // Add sinks for JavaScript DOM XSS patterns (innerHTML, document.write, etc.)
   const jsDOMSinks = findJavaScriptDOMSinks(code, language);

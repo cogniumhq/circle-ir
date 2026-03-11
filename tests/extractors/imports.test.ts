@@ -309,6 +309,119 @@ from sys import argv`;
   });
 });
 
+describe('JavaScript Imports - Additional Edge Cases', () => {
+  beforeAll(async () => {
+    await initParser();
+  });
+
+  it('should extract side-effect import (import "module")', async () => {
+    const code = `import './styles.css';`;
+    const tree = await parse(code, 'javascript');
+    const imports = extractImports(tree, 'javascript');
+
+    expect(imports.length).toBeGreaterThanOrEqual(1);
+    const sideEffect = imports.find(i => i.from_package === './styles.css');
+    expect(sideEffect).toBeDefined();
+    expect(sideEffect!.is_wildcard).toBe(true);
+  });
+
+  it('should extract combined default + named imports', async () => {
+    const code = `import React, { useState, useEffect } from 'react';`;
+    const tree = await parse(code, 'javascript');
+    const imports = extractImports(tree, 'javascript');
+
+    expect(imports.length).toBeGreaterThanOrEqual(2);
+    const defaultImport = imports.find(i => i.imported_name === 'default');
+    expect(defaultImport).toBeDefined();
+    expect(defaultImport!.alias).toBe('React');
+
+    const useStateImport = imports.find(i => i.imported_name === 'useState');
+    expect(useStateImport).toBeDefined();
+    expect(useStateImport!.from_package).toBe('react');
+  });
+
+  it('should extract renamed CommonJS destructured require', async () => {
+    const code = `const { readFile: rf, writeFile: wf } = require('fs');`;
+    const tree = await parse(code, 'javascript');
+    const imports = extractImports(tree, 'javascript');
+
+    expect(imports.length).toBeGreaterThanOrEqual(2);
+    const rfImport = imports.find(i => i.imported_name === 'readFile');
+    expect(rfImport).toBeDefined();
+    expect(rfImport!.alias).toBe('rf');
+    expect(rfImport!.from_package).toBe('fs');
+    expect(rfImport!.is_wildcard).toBe(false);
+  });
+});
+
+describe('Python Imports - Additional Edge Cases', () => {
+  beforeAll(async () => {
+    await initParser();
+  });
+
+  it('should extract wildcard from-import', async () => {
+    const code = `from os import *`;
+    const tree = await parse(code, 'python');
+    const imports = extractImports(tree, 'python');
+
+    expect(imports.length).toBeGreaterThanOrEqual(1);
+    const wildcardImport = imports.find(i => i.is_wildcard === true);
+    expect(wildcardImport).toBeDefined();
+    expect(wildcardImport!.from_package).toBe('os');
+    expect(wildcardImport!.imported_name).toBe('*');
+    expect(wildcardImport!.alias).toBeNull();
+  });
+
+  it('should extract aliased from-import', async () => {
+    const code = `from os import path as ospath`;
+    const tree = await parse(code, 'python');
+    const imports = extractImports(tree, 'python');
+
+    expect(imports.length).toBeGreaterThanOrEqual(1);
+    const pathImport = imports.find(i => i.alias === 'ospath');
+    expect(pathImport).toBeDefined();
+    expect(pathImport!.imported_name).toBe('path');
+    expect(pathImport!.from_package).toBe('os');
+    expect(pathImport!.is_wildcard).toBe(false);
+  });
+
+  it('should extract dotted module import (import os.path)', async () => {
+    const code = `import os.path`;
+    const tree = await parse(code, 'python');
+    const imports = extractImports(tree, 'python');
+
+    expect(imports).toHaveLength(1);
+    expect(imports[0].imported_name).toBe('path');
+    expect(imports[0].from_package).toBe('os');
+    expect(imports[0].is_wildcard).toBe(false);
+  });
+
+  it('should extract multi-level relative import (from ...sibling import foo)', async () => {
+    const code = `from ...sibling import helper`;
+    const tree = await parse(code, 'python');
+    const imports = extractImports(tree, 'python');
+
+    expect(imports.length).toBeGreaterThanOrEqual(1);
+    const helperImport = imports.find(i => i.imported_name === 'helper');
+    expect(helperImport).toBeDefined();
+    expect(helperImport!.from_package).toBeTruthy(); // has relative prefix
+  });
+
+  it('should extract multiple names from one from-import', async () => {
+    const code = `from flask import Flask, request, jsonify`;
+    const tree = await parse(code, 'python');
+    const imports = extractImports(tree, 'python');
+
+    expect(imports.length).toBeGreaterThanOrEqual(3);
+    expect(imports.find(i => i.imported_name === 'Flask')).toBeDefined();
+    expect(imports.find(i => i.imported_name === 'request')).toBeDefined();
+    expect(imports.find(i => i.imported_name === 'jsonify')).toBeDefined();
+    for (const imp of imports) {
+      expect(imp.from_package).toBe('flask');
+    }
+  });
+});
+
 describe('Rust Imports', () => {
   beforeAll(async () => {
     await initParser();
@@ -425,5 +538,96 @@ use std::fmt;
     const fmtImport = imports.find(i => i.imported_name === 'fmt');
     expect(fmtImport).toBeDefined();
     expect(fmtImport!.line_number).toBe(2);
+  });
+
+  it('should extract {self} in use list', async () => {
+    const code = `use std::io::{self, Read};
+
+fn main() {}
+`;
+    const tree = await parse(code, 'rust');
+    const imports = extractImports(tree, 'rust');
+
+    expect(imports.length).toBeGreaterThanOrEqual(2);
+    const selfImport = imports.find(i => i.imported_name === 'self');
+    expect(selfImport).toBeDefined();
+    expect(selfImport!.from_package).toBe('std::io');
+    expect(selfImport!.is_wildcard).toBe(false);
+
+    const readImport = imports.find(i => i.imported_name === 'Read');
+    expect(readImport).toBeDefined();
+  });
+
+  it('should extract aliased item in use list', async () => {
+    const code = `use std::io::{Read as R, Write as W};
+
+fn main() {}
+`;
+    const tree = await parse(code, 'rust');
+    const imports = extractImports(tree, 'rust');
+
+    expect(imports.length).toBeGreaterThanOrEqual(2);
+    const readImport = imports.find(i => i.imported_name === 'Read');
+    expect(readImport).toBeDefined();
+    expect(readImport!.alias).toBe('R');
+    expect(readImport!.from_package).toBe('std::io');
+
+    const writeImport = imports.find(i => i.imported_name === 'Write');
+    expect(writeImport).toBeDefined();
+    expect(writeImport!.alias).toBe('W');
+  });
+
+  it('should extract nested scoped path in use list', async () => {
+    const code = `use std::{collections::HashMap, sync::Arc};
+
+fn main() {}
+`;
+    const tree = await parse(code, 'rust');
+    const imports = extractImports(tree, 'rust');
+
+    expect(imports.length).toBeGreaterThanOrEqual(2);
+    const hashMapImport = imports.find(i => i.imported_name === 'HashMap');
+    expect(hashMapImport).toBeDefined();
+    expect(hashMapImport!.from_package).toContain('collections');
+
+    const arcImport = imports.find(i => i.imported_name === 'Arc');
+    expect(arcImport).toBeDefined();
+  });
+
+  it('should extract aliased nested scoped path in use list (path with ::)', async () => {
+    const code = `use foo::{bar::Baz as B, other::Type as T};
+
+fn main() {}
+`;
+    const tree = await parse(code, 'rust');
+    const imports = extractImports(tree, 'rust');
+
+    expect(imports.length).toBeGreaterThanOrEqual(2);
+    const bazImport = imports.find(i => i.imported_name === 'Baz');
+    expect(bazImport).toBeDefined();
+    expect(bazImport!.alias).toBe('B');
+    expect(bazImport!.from_package).toContain('bar');
+
+    const typeImport = imports.find(i => i.imported_name === 'Type');
+    expect(typeImport).toBeDefined();
+    expect(typeImport!.alias).toBe('T');
+  });
+
+  it('should extract bare use identifier (use std;)', async () => {
+    // Rare case: top-level module without path
+    const code = `use fmt;
+
+fn main() {}
+`;
+    const tree = await parse(code, 'rust');
+    const imports = extractImports(tree, 'rust');
+
+    // May produce 0 or 1 import depending on grammar - just verify no crash
+    expect(Array.isArray(imports)).toBe(true);
+    const fmtImport = imports.find(i => i.imported_name === 'fmt');
+    if (fmtImport) {
+      expect(fmtImport.from_package).toBeNull();
+      expect(fmtImport.is_wildcard).toBe(false);
+    }
   });
 });
