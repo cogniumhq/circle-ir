@@ -18,7 +18,7 @@ import type {
 /**
  * Supported languages for analysis
  */
-export type SupportedLanguage = 'java' | 'javascript' | 'typescript' | 'python' | 'rust';
+export type SupportedLanguage = 'java' | 'javascript' | 'typescript' | 'python' | 'rust' | 'bash';
 
 /**
  * AST node type mappings for a language

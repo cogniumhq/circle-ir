@@ -46,6 +46,8 @@ Current overall coverage: ~80%. Target: ≥75% (met). Areas below threshold that
 | JavaScript/TS | ✅ Complete | ✅ Express, Node.js | ✅ SQL, Cmd, XSS, Path | 100% NodeGoat | - |
 | Python | ✅ Complete | ⚠️ Basic | ⚠️ Basic | 25.2% OWASP | P1 |
 | Rust | ✅ Complete | ⚠️ Actix, Rocket | ⚠️ Diesel, Tokio | 100% CWE-Bench | - |
+| Bash/Shell | ✅ Complete | ⚠️ Basic (read, curl, wget) | ⚠️ Basic (eval, sh -c, mysql, cat) | Not benchmarked | P2 |
+| Go | ❌ No parser | - | - | - | P3 |
 
 ### Pending Language Improvements
 
@@ -117,7 +119,7 @@ Before any release:
 
 ### P3 - Long Term
 
-- [ ] Support for Go language
+- [ ] Support for Go language (P3 - tree-sitter-go available on npm when ready)
 - [ ] Support for C/C++ (limited - no GC tracking)
 - [ ] Support for PHP
 - [ ] Support for Ruby

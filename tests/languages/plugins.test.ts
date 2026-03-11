@@ -8,6 +8,7 @@ import {
   JavaScriptPlugin,
   PythonPlugin,
   RustPlugin,
+  BashPlugin,
   registerBuiltinPlugins,
 } from '../../src/languages/plugins/index.js';
 import { BaseLanguagePlugin } from '../../src/languages/plugins/base.js';
@@ -282,6 +283,169 @@ describe('Language Plugins', () => {
     });
   });
 
+  describe('BashPlugin', () => {
+    const plugin = new BashPlugin();
+
+    it('should have correct id', () => {
+      expect(plugin.id).toBe('bash');
+    });
+
+    it('should handle shell script files', () => {
+      expect(plugin.canHandle('script.sh')).toBe(true);
+      expect(plugin.canHandle('deploy.bash')).toBe(true);
+      expect(plugin.canHandle('config.zsh')).toBe(true);
+      expect(plugin.canHandle('run.ksh')).toBe(true);
+      expect(plugin.canHandle('app.py')).toBe(false);
+      expect(plugin.canHandle('main.rs')).toBe(false);
+    });
+
+    it('should have node type mappings', () => {
+      expect(plugin.nodeTypes.functionDeclaration).toContain('function_definition');
+      expect(plugin.nodeTypes.methodCall).toContain('command');
+      expect(plugin.nodeTypes.functionCall).toContain('command');
+      expect(plugin.nodeTypes.assignment).toContain('variable_assignment');
+      expect(plugin.nodeTypes.variableDeclaration).toContain('variable_assignment');
+      expect(plugin.nodeTypes.variableDeclaration).toContain('declaration_command');
+      expect(plugin.nodeTypes.ifStatement).toContain('if_statement');
+      expect(plugin.nodeTypes.forStatement).toContain('for_statement');
+      expect(plugin.nodeTypes.forStatement).toContain('c_style_for_statement');
+      expect(plugin.nodeTypes.whileStatement).toContain('while_statement');
+    });
+
+    it('should have no OOP type mappings', () => {
+      expect(plugin.nodeTypes.classDeclaration).toHaveLength(0);
+      expect(plugin.nodeTypes.interfaceDeclaration).toHaveLength(0);
+      expect(plugin.nodeTypes.enumDeclaration).toHaveLength(0);
+      expect(plugin.nodeTypes.annotation).toHaveLength(0);
+      expect(plugin.nodeTypes.decorator).toHaveLength(0);
+      expect(plugin.nodeTypes.importStatement).toHaveLength(0);
+    });
+
+    it('should have builtin sources', () => {
+      const sources = plugin.getBuiltinSources();
+      expect(sources.length).toBeGreaterThan(0);
+
+      const readSource = sources.find(s => s.method === 'read');
+      expect(readSource).toBeDefined();
+      expect(readSource?.type).toBe('user_input');
+
+      const curlSource = sources.find(s => s.method === 'curl');
+      expect(curlSource).toBeDefined();
+      expect(curlSource?.type).toBe('http_response');
+
+      const wgetSource = sources.find(s => s.method === 'wget');
+      expect(wgetSource).toBeDefined();
+      expect(wgetSource?.type).toBe('http_response');
+    });
+
+    it('should have builtin sinks', () => {
+      const sinks = plugin.getBuiltinSinks();
+      expect(sinks.length).toBeGreaterThan(0);
+
+      // Code injection via eval
+      const evalSink = sinks.find(s => s.method === 'eval');
+      expect(evalSink).toBeDefined();
+      expect(evalSink?.cwe).toBe('CWE-94');
+      expect(evalSink?.type).toBe('code_injection');
+      expect(evalSink?.severity).toBe('critical');
+
+      // Command injection via sub-shell
+      const bashSink = sinks.find(s => s.method === 'bash');
+      expect(bashSink).toBeDefined();
+      expect(bashSink?.cwe).toBe('CWE-78');
+      expect(bashSink?.type).toBe('command_injection');
+      expect(bashSink?.argPositions).toContain(1);
+
+      const shSink = sinks.find(s => s.method === 'sh');
+      expect(shSink).toBeDefined();
+      expect(shSink?.cwe).toBe('CWE-78');
+
+      const zshSink = sinks.find(s => s.method === 'zsh');
+      expect(zshSink).toBeDefined();
+      expect(zshSink?.cwe).toBe('CWE-78');
+
+      // SQL injection via CLI clients
+      const mysqlSink = sinks.find(s => s.method === 'mysql');
+      expect(mysqlSink).toBeDefined();
+      expect(mysqlSink?.cwe).toBe('CWE-89');
+      expect(mysqlSink?.type).toBe('sql_injection');
+
+      const psqlSink = sinks.find(s => s.method === 'psql');
+      expect(psqlSink).toBeDefined();
+      expect(psqlSink?.cwe).toBe('CWE-89');
+
+      const sqlite3Sink = sinks.find(s => s.method === 'sqlite3');
+      expect(sqlite3Sink).toBeDefined();
+      expect(sqlite3Sink?.cwe).toBe('CWE-89');
+
+      // Path traversal
+      const catSink = sinks.find(s => s.method === 'cat');
+      expect(catSink).toBeDefined();
+      expect(catSink?.cwe).toBe('CWE-22');
+      expect(catSink?.type).toBe('path_traversal');
+      expect(catSink?.argPositions).toContain(0);
+
+      const rmSink = sinks.find(s => s.method === 'rm');
+      expect(rmSink).toBeDefined();
+      expect(rmSink?.cwe).toBe('CWE-22');
+
+      // SSRF
+      const curlSink = sinks.find(s => s.method === 'curl' && s.type === 'ssrf');
+      expect(curlSink).toBeDefined();
+      expect(curlSink?.cwe).toBe('CWE-918');
+
+      const wgetSink = sinks.find(s => s.method === 'wget' && s.type === 'ssrf');
+      expect(wgetSink).toBeDefined();
+      expect(wgetSink?.cwe).toBe('CWE-918');
+    });
+
+    it('should return undefined for receiver type (no OOP)', () => {
+      const result = plugin.getReceiverType({} as any, {} as any);
+      expect(result).toBeUndefined();
+    });
+
+    it('should return undefined for detectFramework', () => {
+      const result = plugin.detectFramework({} as any);
+      expect(result).toBeUndefined();
+    });
+
+    it('should identify bash string literals', () => {
+      expect(plugin.isStringLiteral({ type: 'string' } as any)).toBe(true);
+      expect(plugin.isStringLiteral({ type: 'raw_string' } as any)).toBe(true);
+      expect(plugin.isStringLiteral({ type: 'ansi_c_string' } as any)).toBe(true);
+      expect(plugin.isStringLiteral({ type: 'identifier' } as any)).toBe(false);
+      expect(plugin.isStringLiteral({ type: 'number' } as any)).toBe(false);
+    });
+
+    it('should extract value from double-quoted bash strings', () => {
+      const node = { type: 'string', text: '"hello world"' } as any;
+      expect(plugin.getStringValue(node)).toBe('hello world');
+    });
+
+    it('should extract value from single-quoted raw strings', () => {
+      const node = { type: 'raw_string', text: "'hello world'" } as any;
+      expect(plugin.getStringValue(node)).toBe('hello world');
+    });
+
+    it('should extract value from $\'...\' ansi_c strings', () => {
+      const node = { type: 'ansi_c_string', text: "$'hello\\nworld'" } as any;
+      expect(plugin.getStringValue(node)).toBe("hello\\nworld");
+    });
+
+    it('should return undefined for non-string nodes', () => {
+      const node = { type: 'identifier', text: 'foo' } as any;
+      expect(plugin.getStringValue(node)).toBeUndefined();
+    });
+
+    it('should return empty arrays from extraction methods', () => {
+      const ctx = {} as any;
+      expect(plugin.extractTypes(ctx)).toEqual([]);
+      expect(plugin.extractCalls(ctx)).toEqual([]);
+      expect(plugin.extractImports(ctx)).toEqual([]);
+      expect(plugin.extractPackage(ctx)).toBeUndefined();
+    });
+  });
+
   describe('Plugin Registration', () => {
     it('should register all builtin plugins', () => {
       const registry = getLanguageRegistry();
@@ -291,6 +455,7 @@ describe('Language Plugins', () => {
       expect(languages).toContain('javascript');
       expect(languages).toContain('python');
       expect(languages).toContain('rust');
+      expect(languages).toContain('bash');
     });
 
     it('should allow lookup by language', () => {
@@ -298,6 +463,7 @@ describe('Language Plugins', () => {
       expect(getLanguagePlugin('javascript')).toBeDefined();
       expect(getLanguagePlugin('python')).toBeDefined();
       expect(getLanguagePlugin('rust')).toBeDefined();
+      expect(getLanguagePlugin('bash')).toBeDefined();
     });
 
     it('should allow lookup by file extension', () => {
@@ -308,6 +474,8 @@ describe('Language Plugins', () => {
       expect(registry.getForFile('app.ts')?.id).toBe('javascript');
       expect(registry.getForFile('main.py')?.id).toBe('python');
       expect(registry.getForFile('lib.rs')?.id).toBe('rust');
+      expect(registry.getForFile('deploy.sh')?.id).toBe('bash');
+      expect(registry.getForFile('config.zsh')?.id).toBe('bash');
     });
   });
 
