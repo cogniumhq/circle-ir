@@ -412,6 +412,46 @@ function buildPythonTaintedVars(sourceCode: string): Map<string, number> {
 }
 
 /**
+ * Forward taint propagation for JavaScript/TypeScript.
+ * Tracks which local variables are tainted from HTTP request sources.
+ * Used to filter spurious XSS sinks where the argument is NOT actually tainted
+ * (e.g., res.send(stdout) where stdout is a callback param from exec(), not user input).
+ */
+function buildJavaScriptTaintedVars(sourceCode: string, language: string): Map<string, number> {
+  if (!['javascript', 'typescript'].includes(language)) return new Map();
+  const tainted = new Map<string, number>();
+  const lines = sourceCode.split('\n');
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    // Skip comment lines
+    const trimmed = line.trimStart();
+    if (trimmed.startsWith('//') || trimmed.startsWith('*')) continue;
+
+    // Match variable assignments: var/let/const x = rhs  OR  x = rhs
+    const assignMatch = line.match(/(?:(?:var|let|const)\s+)?(\w+)\s*=\s*(.+)/);
+    if (!assignMatch) continue;
+    const [, lhs, rhs] = assignMatch;
+
+    // Skip keywords that look like assignments but aren't variable names
+    if (['if', 'while', 'for', 'return', 'true', 'false', 'null', 'undefined', 'case'].includes(lhs)) continue;
+
+    // Seed from direct source patterns (req.query.x, req.body, etc.)
+    const isDirectSource = JS_TAINTED_PATTERNS.some(p => p.pattern.test(rhs));
+
+    // Propagate from existing tainted variables
+    const isTaintedPropagation = tainted.size > 0 &&
+      [...tainted.keys()].some(v => new RegExp(`\\b${v}\\b`).test(rhs));
+
+    if (isDirectSource || isTaintedPropagation) {
+      tainted.set(lhs, i + 1);
+    }
+  }
+
+  return tainted;
+}
+
+/**
  * Detect Python apostrophe-check sanitizer guards, e.g.:
  *   if "'" in bar:
  *       return  # or raise / abort
@@ -484,6 +524,48 @@ function findPythonTrustBoundaryViolations(
   }
 
   return violations;
+}
+
+/**
+ * Find Python XSS sinks in return/yield statements.
+ * Flask/Django routes often return HTML strings directly:
+ *   return '<h1>' + user_input + '</h1>'
+ *   return f'<html>{user_input}</html>'
+ * These are not call nodes so findSinks() never detects them.
+ */
+function findPythonReturnXSSSinks(
+  sourceCode: string,
+  language: string,
+  taintedVars: Map<string, number>
+): Array<{ sinkLine: number }> {
+  if (language !== 'python' || taintedVars.size === 0) return [];
+
+  const sinks: Array<{ sinkLine: number }> = [];
+  const lines = sourceCode.split('\n');
+  const taintedKeys = [...taintedVars.keys()];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.trimStart().startsWith('#')) continue;
+
+    // Match return/yield statements with string content
+    const returnMatch = line.match(/^\s*(?:return|yield)\s+(.+)$/);
+    if (!returnMatch) continue;
+
+    const expr = returnMatch[1];
+
+    // Must contain a tainted variable
+    const hasTaintedVar = taintedKeys.some(v => new RegExp(`\\b${v}\\b`).test(expr));
+    if (!hasTaintedVar) continue;
+
+    // Must look like HTML (contains '<', or is a string concatenation, or f-string with HTML)
+    const looksLikeHTML = expr.includes('<') || /['"]\s*\+/.test(expr) || /\+\s*['"]/.test(expr) || /f['"][^'"]*\{/.test(expr);
+    if (!looksLikeHTML) continue;
+
+    sinks.push({ sinkLine: i + 1 });
+  }
+
+  return sinks;
 }
 
 /**
@@ -977,6 +1059,43 @@ export async function analyze(
         });
       }
     }
+
+    // Add XSS sinks from return/yield statements (Flask/Django routes return HTML directly)
+    const pyReturnXSS = findPythonReturnXSSSinks(code, language, pyTaintedVars);
+    for (const r of pyReturnXSS) {
+      const alreadyExists = taint.sinks.some(
+        s => s.line === r.sinkLine && s.type === 'xss'
+      );
+      if (!alreadyExists) {
+        taint.sinks.push({
+          type: 'xss',
+          cwe: 'CWE-79',
+          line: r.sinkLine,
+          location: `return HTML with user input at line ${r.sinkLine}`,
+          confidence: 0.9,
+        });
+      }
+    }
+  }
+
+  // JavaScript/TypeScript: filter XSS sinks where the argument variable is NOT actually
+  // tainted by user input (e.g., res.send(stdout) — stdout is a callback param from exec(),
+  // not a variable derived from req.query/req.body). This prevents FP pairs like:
+  //   CWE-78 (correct) + CWE-79 (spurious) for the same source when the cmd output is sent.
+  if (['javascript', 'typescript'].includes(language)) {
+    const jsTaintedVars = buildJavaScriptTaintedVars(code, language);
+    if (jsTaintedVars.size > 0) {
+      const jsSourceLines = code.split('\n');
+      taint.sinks = taint.sinks.filter(sink => {
+        if (sink.type !== 'xss') return true;
+        const sinkLineText = jsSourceLines[sink.line - 1] ?? '';
+        // Keep if any known-tainted variable appears on this sink line
+        if ([...jsTaintedVars.keys()].some(v => new RegExp(`\\b${v}\\b`).test(sinkLineText))) return true;
+        // Also keep if the sink line directly references a taint source (inline use, no assignment)
+        if (JS_TAINTED_PATTERNS.some(p => p.pattern.test(sinkLineText))) return true;
+        return false;
+      });
+    }
   }
 
   // Propagate taint through dataflow to find verified flows
@@ -1128,7 +1247,12 @@ export async function analyze(
     );
 
     // Add inter-procedural sinks to the taint sinks and generate flows
+    // Skip external_taint_escape (CWE-668) here: they are only used as a last resort
+    // in the fallback path below when no other sinks exist. Adding them when proper sinks
+    // already exist creates duplicate/spurious findings (e.g., http.get already reported
+    // as CWE-918 SSRF; also getting CWE-668 for the same call chain is a FP).
     for (const sink of interProc.propagatedSinks) {
+      if (sink.type === 'external_taint_escape') continue;
       if (!taint.sinks.some(s => s.line === sink.line)) {
         taint.sinks.push(sink);
       }

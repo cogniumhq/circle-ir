@@ -1215,9 +1215,12 @@ export const DEFAULT_SINKS: SinkPattern[] = [
   { method: 'execSync', class: 'child_process', type: 'command_injection', cwe: 'CWE-78', severity: 'critical', arg_positions: [0] },
   { method: 'spawn', class: 'child_process', type: 'command_injection', cwe: 'CWE-78', severity: 'critical', arg_positions: [0] },
   { method: 'spawnSync', class: 'child_process', type: 'command_injection', cwe: 'CWE-78', severity: 'critical', arg_positions: [0] },
-  // Also match without receiver (destructured imports)
+  // Also match without receiver (destructured imports: const { exec } = require('child_process'))
   { method: 'exec', type: 'command_injection', cwe: 'CWE-78', severity: 'high', arg_positions: [0] },
   { method: 'execSync', type: 'command_injection', cwe: 'CWE-78', severity: 'high', arg_positions: [0] },
+  { method: 'spawn', type: 'command_injection', cwe: 'CWE-78', severity: 'high', arg_positions: [0] },
+  { method: 'spawnSync', type: 'command_injection', cwe: 'CWE-78', severity: 'high', arg_positions: [0] },
+  { method: 'execFile', type: 'command_injection', cwe: 'CWE-78', severity: 'high', arg_positions: [0] },
 
   // Node.js File System (path traversal)
   { method: 'readFile', class: 'fs', type: 'path_traversal', cwe: 'CWE-22', severity: 'critical', arg_positions: [0] },
@@ -1266,7 +1269,9 @@ export const DEFAULT_SINKS: SinkPattern[] = [
   { method: 'request', class: 'axios', type: 'ssrf', cwe: 'CWE-918', severity: 'high', arg_positions: [0] },
   { method: 'fetch', type: 'ssrf', cwe: 'CWE-918', severity: 'high', arg_positions: [0] },
   { method: 'request', class: 'http', type: 'ssrf', cwe: 'CWE-918', severity: 'high', arg_positions: [0] },
+  { method: 'get', class: 'http', type: 'ssrf', cwe: 'CWE-918', severity: 'high', arg_positions: [0] },
   { method: 'request', class: 'https', type: 'ssrf', cwe: 'CWE-918', severity: 'high', arg_positions: [0] },
+  { method: 'get', class: 'https', type: 'ssrf', cwe: 'CWE-918', severity: 'high', arg_positions: [0] },
   // needle library (used in NodeGoat)
   { method: 'get', class: 'needle', type: 'ssrf', cwe: 'CWE-918', severity: 'high', arg_positions: [0] },
   { method: 'post', class: 'needle', type: 'ssrf', cwe: 'CWE-918', severity: 'high', arg_positions: [0] },

@@ -10,6 +10,14 @@
       "note": "Command execution - extremely dangerous with user input"
     },
     {
+      "method": "exec",
+      "type": "command_injection",
+      "cwe": "CWE-78",
+      "severity": "critical",
+      "arg_positions": [0],
+      "note": "Destructured child_process.exec import - no receiver"
+    },
+    {
       "method": "execSync",
       "class": "child_process",
       "type": "command_injection",
@@ -17,6 +25,14 @@
       "severity": "critical",
       "arg_positions": [0],
       "note": "Synchronous command execution"
+    },
+    {
+      "method": "execSync",
+      "type": "command_injection",
+      "cwe": "CWE-78",
+      "severity": "critical",
+      "arg_positions": [0],
+      "note": "Destructured child_process.execSync import - no receiver"
     },
     {
       "method": "spawn",
@@ -28,6 +44,14 @@
       "note": "Process spawn - arg[0] is command, arg[1] is args array"
     },
     {
+      "method": "spawn",
+      "type": "command_injection",
+      "cwe": "CWE-78",
+      "severity": "critical",
+      "arg_positions": [0, 1],
+      "note": "Destructured child_process.spawn import - no receiver"
+    },
+    {
       "method": "spawnSync",
       "class": "child_process",
       "type": "command_injection",
@@ -37,6 +61,14 @@
       "note": "Synchronous process spawn"
     },
     {
+      "method": "spawnSync",
+      "type": "command_injection",
+      "cwe": "CWE-78",
+      "severity": "critical",
+      "arg_positions": [0, 1],
+      "note": "Destructured child_process.spawnSync import - no receiver"
+    },
+    {
       "method": "execFile",
       "class": "child_process",
       "type": "command_injection",
@@ -44,6 +76,14 @@
       "severity": "critical",
       "arg_positions": [0, 1],
       "note": "Execute file with arguments"
+    },
+    {
+      "method": "execFile",
+      "type": "command_injection",
+      "cwe": "CWE-78",
+      "severity": "critical",
+      "arg_positions": [0, 1],
+      "note": "Destructured child_process.execFile import - no receiver"
     },
     {
       "method": "fork",
@@ -294,6 +334,15 @@
       "note": "Node.js HTTP request"
     },
     {
+      "method": "get",
+      "class": "http",
+      "type": "ssrf",
+      "cwe": "CWE-918",
+      "severity": "high",
+      "arg_positions": [0],
+      "note": "Node.js HTTP GET request - validate URL to prevent SSRF"
+    },
+    {
       "method": "request",
       "class": "https",
       "type": "ssrf",
@@ -301,6 +350,15 @@
       "severity": "high",
       "arg_positions": [0],
       "note": "Node.js HTTPS request"
+    },
+    {
+      "method": "get",
+      "class": "https",
+      "type": "ssrf",
+      "cwe": "CWE-918",
+      "severity": "high",
+      "arg_positions": [0],
+      "note": "Node.js HTTPS GET request"
     },
     {
       "method": "redirect",
