@@ -128,6 +128,10 @@ export function analyzeInterprocedural(
     'get', 'getLast', 'getFirst', 'peek', 'poll', 'pop', 'remove', 'removeFirst', 'removeLast',
     'iterator', 'listIterator', 'next', 'hasNext', 'size', 'isEmpty', 'contains', 'containsKey',
     'toString', 'valueOf', 'hashCode', 'equals', 'clone', 'clear',
+    // StringBuilder / StringBuffer / Writer accumulator methods — taint propagates through these
+    // but the CWE-668 sink check should not fire on pure string accumulation
+    'append', 'insert', 'prepend', 'concat', 'delete', 'deleteCharAt', 'replace', 'reverse',
+    'write', 'writeln', 'println',
   ]);
 
   // Track safe utility methods (validation, normalization, path handling)
@@ -142,6 +146,16 @@ export function analyzeInterprocedural(
     'minimatch', 'match', 'test', 'includes', 'startsWith', 'endsWith',
     // General validation
     'validate', 'validateInput', 'check', 'verify',
+    // I/O stream wrappers — pure decorators that wrap a stream, not security sinks
+    // e.g. new InputStreamReader(proc.getInputStream()) is safe; the underlying stream is the source
+    'InputStreamReader', 'OutputStreamWriter',
+    'BufferedInputStream', 'BufferedOutputStream',
+    'ByteArrayInputStream', 'ByteArrayOutputStream',
+    'DataInputStream', 'DataOutputStream',
+    'PushbackInputStream', 'SequenceInputStream',
+    'BufferedReader', 'BufferedWriter',
+    'PrintStream', 'PrintWriter',
+    'ObjectOutputStream',  // ObjectInputStream IS a sink (deserialization), keep it out
   ]);
 
   // Build set of sanitizer method names (methods that clean tainted data)

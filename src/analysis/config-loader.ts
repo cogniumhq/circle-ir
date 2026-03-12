@@ -629,9 +629,7 @@ export const DEFAULT_SINKS: SinkPattern[] = [
   { method: 'resolveURI', type: 'path_traversal', cwe: 'CWE-22', severity: 'high', arg_positions: [0] },
   { method: 'resolve', class: 'SourceResolver', type: 'path_traversal', cwe: 'CWE-22', severity: 'high', arg_positions: [0] },
   { method: 'getSource', class: 'SourceResolver', type: 'path_traversal', cwe: 'CWE-22', severity: 'high', arg_positions: [0] },
-  // URL-based resource loading
-  { method: 'URL', class: 'constructor', type: 'path_traversal', cwe: 'CWE-22', severity: 'medium', arg_positions: [0] },
-  { method: 'openStream', class: 'URL', type: 'path_traversal', cwe: 'CWE-22', severity: 'medium', arg_positions: [] },
+  // NOTE: new URL(userInput) is SSRF (CWE-918), not path traversal — see ssrf section below
   // Servlet context resource loading
   { method: 'getResource', class: 'ServletContext', type: 'path_traversal', cwe: 'CWE-22', severity: 'high', arg_positions: [0] },
   { method: 'getResourceAsStream', class: 'ServletContext', type: 'path_traversal', cwe: 'CWE-22', severity: 'high', arg_positions: [0] },
@@ -668,8 +666,7 @@ export const DEFAULT_SINKS: SinkPattern[] = [
   { method: 'extract', type: 'path_traversal', cwe: 'CWE-22', severity: 'critical', arg_positions: [0, 1] },
   { method: 'extractAll', type: 'path_traversal', cwe: 'CWE-22', severity: 'critical', arg_positions: [0, 1] },
   { method: 'unjar', type: 'path_traversal', cwe: 'CWE-22', severity: 'critical', arg_positions: [0, 1] },
-  // Additional file constructors
-  { method: 'BufferedReader', class: 'constructor', type: 'path_traversal', cwe: 'CWE-22', severity: 'high', arg_positions: [0] },
+  // Additional file constructors — BufferedReader(Reader) is NOT a path traversal sink; it wraps a Reader, not a file path
   { method: 'PrintWriter', class: 'constructor', type: 'path_traversal', cwe: 'CWE-22', severity: 'high', arg_positions: [0] },
   { method: 'Scanner', class: 'constructor', type: 'path_traversal', cwe: 'CWE-22', severity: 'high', arg_positions: [0] },
   // Topic/queue names (for message queue systems - can be exploited for path traversal)
