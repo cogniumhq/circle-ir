@@ -157,19 +157,27 @@ const JS_TAINTED_PATTERNS = [
  * Also covers subscript access: user_id = request.args['id']
  */
 const PYTHON_TAINTED_PATTERNS = [
-  { pattern: /\brequest\.args\b/,         type: 'http_param'  as const },
-  { pattern: /\brequest\.form\b/,         type: 'http_body'   as const },
-  { pattern: /\brequest\.json\b/,         type: 'http_body'   as const },
-  { pattern: /\brequest\.data\b/,         type: 'http_body'   as const },
-  { pattern: /\brequest\.files?\b/,       type: 'file_input'  as const },
-  { pattern: /\brequest\.headers?\b/,     type: 'http_header' as const },
-  { pattern: /\brequest\.cookies\b/,      type: 'http_cookie' as const },
-  { pattern: /\brequest\.GET\b/,          type: 'http_param'  as const },
-  { pattern: /\brequest\.POST\b/,         type: 'http_body'   as const },
-  { pattern: /\brequest\.META\b/,         type: 'http_header' as const },
-  { pattern: /\brequest\.FILES\b/,        type: 'file_input'  as const },
-  { pattern: /\brequest\.query_params\b/, type: 'http_param'  as const },
-  { pattern: /\brequest\.path_params\b/,  type: 'http_param'  as const },
+  { pattern: /\brequest\.args\b/,              type: 'http_param'  as const },
+  { pattern: /\brequest\.form\b/,              type: 'http_body'   as const },
+  { pattern: /\brequest\.json\b/,              type: 'http_body'   as const },
+  { pattern: /\brequest\.data\b/,              type: 'http_body'   as const },
+  { pattern: /\brequest\.files?\b/,            type: 'file_input'  as const },
+  { pattern: /\brequest\.headers?\b/,          type: 'http_header' as const },
+  { pattern: /\brequest\.cookies\b/,           type: 'http_cookie' as const },
+  { pattern: /\brequest\.GET\b/,               type: 'http_param'  as const },
+  { pattern: /\brequest\.POST\b/,              type: 'http_body'   as const },
+  { pattern: /\brequest\.META\b/,              type: 'http_header' as const },
+  { pattern: /\brequest\.FILES\b/,             type: 'file_input'  as const },
+  { pattern: /\brequest\.query_params\b/,      type: 'http_param'  as const },
+  { pattern: /\brequest\.path_params\b/,       type: 'http_param'  as const },
+  // Flask raw query/body strings
+  { pattern: /\brequest\.query_string\b/,      type: 'http_param'  as const },
+  { pattern: /\brequest\.get_data\s*\(/,       type: 'http_body'   as const },
+  // Request wrapper helper methods (common in OWASP-style benchmarks and real wrappers)
+  { pattern: /\bget_form_parameter\s*\(/,      type: 'http_body'   as const },
+  { pattern: /\bget_query_parameter\s*\(/,     type: 'http_param'  as const },
+  { pattern: /\bget_header_value\s*\(/,        type: 'http_header' as const },
+  { pattern: /\bget_cookie_value\s*\(/,        type: 'http_cookie' as const },
 ];
 
 /**
@@ -277,6 +285,205 @@ function findPythonAssignmentSources(
   }
 
   return sources;
+}
+
+/**
+ * Build a map of tainted variable names → source line via simple forward
+ * line-by-line taint propagation for Python.
+ *
+ * Seeds from PYTHON_TAINTED_PATTERNS; propagates through assignments where the
+ * RHS contains a tainted variable. Uses per-key container taint to distinguish
+ * map['tainted_key'] from map['safe_key'] and conf.get(s,tainted_k) vs conf.get(s,safe_k).
+ */
+function buildPythonTaintedVars(sourceCode: string): Map<string, number> {
+  const tainted = new Map<string, number>();
+  // Per-key container taint: "map['key']" or "conf['section']['key']" → line number
+  const containerTainted = new Map<string, number>();
+  const lines = sourceCode.split('\n');
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.trimStart().startsWith('#')) continue;
+
+    // Subscript assignment: container['key'] = value
+    // Tracks taint per-key so map['keyA']='safe' and map['keyB']=param are distinguished.
+    const subscriptAssign = line.match(/^\s*(\w+)\[(['"])([^'"]+)\2\]\s*=\s*(.+)$/);
+    if (subscriptAssign) {
+      const [, container, , key, rhs2] = subscriptAssign;
+      const isTaintedRhs = [...tainted.keys()].some(v => new RegExp(`\\b${v}\\b`).test(rhs2));
+      if (isTaintedRhs) {
+        containerTainted.set(`${container}['${key}']`, i + 1);
+      }
+      continue; // subscript assignments don't match simple variable regex below
+    }
+
+    // ConfigParser set: obj.set('section', 'key', value)
+    // Tracks per (section, key) so conf.get('s','keyA') and conf.get('s','keyB') are distinct.
+    const setCallMatch = line.match(/^\s*(\w+)\.set\s*\(\s*(['"])([^'"]+)\2\s*,\s*(['"])([^'"]+)\4\s*,\s*(.+?)\s*\)$/);
+    if (setCallMatch) {
+      const [, obj, , section, , key, rhs2] = setCallMatch;
+      const isTaintedRhs = [...tainted.keys()].some(v => new RegExp(`\\b${v}\\b`).test(rhs2));
+      if (isTaintedRhs) {
+        containerTainted.set(`${obj}['${section}']['${key}']`, i + 1);
+      }
+      continue;
+    }
+
+    // Augmented assignment: var += expr — taint if either side is tainted
+    const augAssign = line.match(/^\s*(\w+)\s*\+=\s*(.+)$/);
+    if (augAssign) {
+      const [, augLhs, augRhs] = augAssign;
+      const rhsTainted = [...tainted.keys()].some(v => new RegExp(`\\b${v}\\b`).test(augRhs));
+      if (rhsTainted || tainted.has(augLhs)) {
+        tainted.set(augLhs, tainted.get(augLhs) ?? (i + 1));
+      }
+      continue;
+    }
+
+    // For loop: for var in tainted_source — seed loop variable as tainted
+    const forLoopMatch = line.match(/^\s*for\s+(\w+)\s+in\s+(.+?)(?:\s*:\s*)?$/);
+    if (forLoopMatch) {
+      const [, iterVar, iterExpr] = forLoopMatch;
+      const isDirectSource = PYTHON_TAINTED_PATTERNS.some(p => p.pattern.test(iterExpr));
+      const isPropagated = [...tainted.keys()].some(v => new RegExp(`\\b${v}\\b`).test(iterExpr));
+      if (isDirectSource || isPropagated) {
+        tainted.set(iterVar, i + 1);
+      }
+      continue;
+    }
+
+    // Regular assignment: var = expr
+    const assignMatch = line.match(/^\s*(\w+)\s*=\s*(.+)$/);
+    if (!assignMatch) continue;
+    const [, lhs, rhs] = assignMatch;
+
+    const isDirectSource = PYTHON_TAINTED_PATTERNS.some(p => p.pattern.test(rhs));
+
+    let propagatedFrom: string | undefined;
+
+    // Per-key dict access: bar = container['key']
+    const dictAccessMatch = rhs.trim().match(/^(\w+)\[(['"])([^'"]+)\2\]$/);
+    if (dictAccessMatch) {
+      const [, container, , key] = dictAccessMatch;
+      if (containerTainted.has(`${container}['${key}']`)) {
+        propagatedFrom = `${container}['${key}']`;
+      }
+    }
+
+    // Per-key configparser get: bar = conf.get('section', 'key')
+    if (!propagatedFrom) {
+      const confGetMatch = rhs.trim().match(/^(\w+)\.get\s*\(\s*(['"])([^'"]+)\2\s*,\s*(['"])([^'"]+)\4\s*\)$/);
+      if (confGetMatch) {
+        const [, obj, , section, , key] = confGetMatch;
+        if (containerTainted.has(`${obj}['${section}']['${key}']`)) {
+          propagatedFrom = `${obj}['${section}']['${key}']`;
+        }
+      }
+    }
+
+    // Standard variable propagation (skip os.environ/os.getenv — safe env reads)
+    if (!propagatedFrom) {
+      const isSafeEnvRead = /\bos\.environ\.get\s*\(/.test(rhs) || /\bos\.getenv\s*\(/.test(rhs);
+      if (!isSafeEnvRead) {
+        propagatedFrom = [...tainted.keys()].find(v => new RegExp(`\\b${v}\\b`).test(rhs));
+      }
+    }
+
+    if (isDirectSource) {
+      tainted.set(lhs, i + 1);
+    } else if (propagatedFrom !== undefined) {
+      tainted.set(lhs, i + 1);
+    } else if (tainted.has(lhs)) {
+      // Variable overwritten — preserve taint for null-guard patterns like:
+      //   if not param:
+      //       param = ""
+      const prevNonBlank = lines.slice(0, i).reverse().find(l => l.trim() && !l.trimStart().startsWith('#'));
+      const isNullGuard = prevNonBlank !== undefined && (
+        new RegExp(`^\\s*if\\s+not\\s+${lhs}\\s*:`).test(prevNonBlank) ||
+        new RegExp(`^\\s*if\\s+${lhs}\\s+is\\s+None\\s*:`).test(prevNonBlank)
+      );
+      if (!isNullGuard) {
+        tainted.delete(lhs);
+      }
+    }
+  }
+
+  return tainted;
+}
+
+/**
+ * Detect Python apostrophe-check sanitizer guards, e.g.:
+ *   if "'" in bar:
+ *       return  # or raise / abort
+ * Returns the set of variable names that are guarded this way.
+ */
+function findPythonQuoteSanitizedVars(sourceCode: string): Set<string> {
+  const sanitized = new Set<string>();
+  const lines = sourceCode.split('\n');
+
+  for (let i = 0; i < lines.length - 1; i++) {
+    // Match any apostrophe/quote check: if "'" in var:, if '\'' in var:, if '"' in var:
+    // Uses full quoted-string pattern to handle Python's various literal forms.
+    const m = lines[i].match(/^\s*if\s+(?:'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")\s+in\s+(\w+)\s*:/);
+    if (!m) continue;
+    // Look ahead up to 5 lines for a return/raise/abort/continue/break
+    // The guard body may be multi-line (e.g. RESPONSE += (...) \n return).
+    // Stop early if we encounter a line at the same or lesser indentation as the if (block exit).
+    const ifIndent = (lines[i].match(/^(\s*)/) ?? ['', ''])[1].length;
+    let foundExit = false;
+    for (let j = i + 1; j <= Math.min(i + 5, lines.length - 1); j++) {
+      const jLine = lines[j] ?? '';
+      if (!jLine.trim()) continue; // skip blank lines
+      const jIndent = (jLine.match(/^(\s*)/) ?? ['', ''])[1].length;
+      if (jIndent <= ifIndent) break; // left the if-block
+      if (/^(return|raise|abort|continue|break)\b/.test(jLine.trim())) {
+        foundExit = true;
+        break;
+      }
+    }
+    if (foundExit) {
+      sanitized.add(m[1]);
+    }
+  }
+
+  return sanitized;
+}
+
+/**
+ * Detect Python trust boundary violations:
+ *   flask.session[key] = value  (or session[key] = value)
+ * where key or value references a tainted variable.
+ */
+function findPythonTrustBoundaryViolations(
+  sourceCode: string,
+  language: string,
+  taintedVars: Map<string, number>
+): Array<{ sourceLine: number; sinkLine: number }> {
+  if (language !== 'python' || taintedVars.size === 0) return [];
+
+  const violations: Array<{ sourceLine: number; sinkLine: number }> = [];
+  const lines = sourceCode.split('\n');
+  const SESSION_WRITE = /(?:flask\.)?session\[([^\]]+)\]\s*=\s*(.+)$/;
+
+  const taintedKeys = [...taintedVars.keys()];
+  const earliestSourceLine = Math.min(...[...taintedVars.values()]);
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.trimStart().startsWith('#')) continue;
+    const m = line.match(SESSION_WRITE);
+    if (!m) continue;
+    const [, keyExpr, valueExpr] = m;
+
+    const keyTainted  = taintedKeys.some(v => new RegExp(`\\b${v}\\b`).test(keyExpr));
+    const valueTainted = taintedKeys.some(v => new RegExp(`\\b${v}\\b`).test(valueExpr));
+
+    if (keyTainted || valueTainted) {
+      violations.push({ sourceLine: earliestSourceLine, sinkLine: i + 1 });
+    }
+  }
+
+  return violations;
 }
 
 /**
@@ -712,6 +919,66 @@ export async function analyze(
   // Filter sinks that are wrapped by sanitizers on the same line
   taint.sinks = filterSanitizedSinks(taint.sinks, taint.sanitizers ?? [], calls);
 
+  // Python: reduce XPath false-positives using forward taint propagation +
+  // apostrophe-guard sanitizer detection; also detect trust boundary violations
+  // (flask.session[key] = value) which are subscript assignments, not call nodes.
+  if (language === 'python') {
+    const pyTaintedVars = buildPythonTaintedVars(code);
+    const pySanitizedVars = findPythonQuoteSanitizedVars(code);
+    // Propagate sanitization: if bar is sanitized and query = f"...{bar}...", query is also sanitized
+    for (const line of code.split('\n')) {
+      const am = line.match(/^\s*(\w+)\s*=\s*(.+)$/);
+      if (!am) continue;
+      const [, lhs, rhs] = am;
+      if ([...pySanitizedVars].some(v => new RegExp(`\\b${v}\\b`).test(rhs))) {
+        pySanitizedVars.add(lhs);
+      }
+    }
+    // Detect inline .replace() sanitizers: query = f"...{bar.replace('\'', '&apos;')}..."
+    // The tainted var appears with .replace() in the rhs — treat lhs as XPath-safe
+    for (const line of code.split('\n')) {
+      const am = line.match(/^\s*(\w+)\s*=\s*(.+)$/);
+      if (!am) continue;
+      const [, lhs, rhs] = am;
+      const hasReplaceOnTainted = [...pyTaintedVars.keys()].some(v =>
+        new RegExp(`\\b${v}\\.replace\\s*\\(`).test(rhs)
+      );
+      if (hasReplaceOnTainted) pySanitizedVars.add(lhs);
+    }
+    const pySourceLines = code.split('\n');
+
+    // Filter XPath sinks: keep only if a tainted var is used at the sink line
+    taint.sinks = taint.sinks.filter(sink => {
+      if (sink.type !== 'xpath_injection') return true;
+      const sinkLineText = pySourceLines[sink.line - 1] ?? '';
+      const taintedVarOnLine = [...pyTaintedVars.keys()].find(v =>
+        new RegExp(`\\b${v}\\b`).test(sinkLineText)
+      );
+      if (!taintedVarOnLine) return false;
+      if (pySanitizedVars.has(taintedVarOnLine)) return false;
+      // Suppress parameterized XPath: root.xpath(query, name=bar) where bar is a keyword arg
+      if (new RegExp(`\\.xpath\\s*\\([^)]*\\b\\w+\\s*=\\s*\\b${taintedVarOnLine}\\b`).test(sinkLineText)) return false;
+      return true;
+    });
+
+    // Add trust boundary sinks from session subscript assignments
+    const trustViolations = findPythonTrustBoundaryViolations(code, language, pyTaintedVars);
+    for (const v of trustViolations) {
+      const alreadyExists = taint.sinks.some(
+        s => s.line === v.sinkLine && s.type === 'trust_boundary'
+      );
+      if (!alreadyExists) {
+        taint.sinks.push({
+          type: 'trust_boundary',
+          cwe: 'CWE-501',
+          line: v.sinkLine,
+          location: `session write at line ${v.sinkLine}`,
+          confidence: 0.85,
+        });
+      }
+    }
+  }
+
   // Propagate taint through dataflow to find verified flows
   if (taint.sources.length > 0 && taint.sinks.length > 0) {
     const propagationResult = propagateTaint(
@@ -1109,8 +1376,71 @@ export async function analyzeForAPI(
   // Filter sinks wrapped by sanitizers on the same line
   filteredSinks = filterSanitizedSinks(filteredSinks, taint.sanitizers ?? [], calls);
 
+  // Python: reduce XPath false-positives using forward taint propagation +
+  // apostrophe-guard sanitizer detection.
+  let pythonTaintedVars: Map<string, number> = new Map();
+  if (language === 'python') {
+    pythonTaintedVars = buildPythonTaintedVars(code);
+    const pythonSanitizedVars = findPythonQuoteSanitizedVars(code);
+    // Propagate sanitization: if bar is sanitized and query = f"...{bar}...", query is also sanitized
+    for (const line of code.split('\n')) {
+      const am = line.match(/^\s*(\w+)\s*=\s*(.+)$/);
+      if (!am) continue;
+      const [, lhs, rhs] = am;
+      if ([...pythonSanitizedVars].some(v => new RegExp(`\\b${v}\\b`).test(rhs))) {
+        pythonSanitizedVars.add(lhs);
+      }
+    }
+    // Detect inline .replace() sanitizers: query = f"...{bar.replace('\'', '&apos;')}..."
+    for (const line of code.split('\n')) {
+      const am = line.match(/^\s*(\w+)\s*=\s*(.+)$/);
+      if (!am) continue;
+      const [, lhs, rhs] = am;
+      const hasReplaceOnTainted = [...pythonTaintedVars.keys()].some(v =>
+        new RegExp(`\\b${v}\\.replace\\s*\\(`).test(rhs)
+      );
+      if (hasReplaceOnTainted) pythonSanitizedVars.add(lhs);
+    }
+    const sourceLines = code.split('\n');
+    filteredSinks = filteredSinks.filter(sink => {
+      if (sink.type !== 'xpath_injection') return true;
+      // Keep XPath sink only if a tainted variable is used at the sink line
+      const sinkLineText = sourceLines[sink.line - 1] ?? '';
+      const taintedVarOnLine = [...pythonTaintedVars.keys()].find(v =>
+        new RegExp(`\\b${v}\\b`).test(sinkLineText)
+      );
+      if (!taintedVarOnLine) return false;
+      // Kill if the variable is protected by an apostrophe guard
+      if (pythonSanitizedVars.has(taintedVarOnLine)) return false;
+      // Suppress parameterized XPath: root.xpath(query, name=bar) where bar is a keyword arg
+      if (new RegExp(`\\.xpath\\s*\\([^)]*\\b\\w+\\s*=\\s*\\b${taintedVarOnLine}\\b`).test(sinkLineText)) return false;
+      return true;
+    });
+  }
+
   // Generate vulnerabilities from source-sink pairs
   const vulnerabilities = findVulnerabilities(taint.sources, filteredSinks, calls, constPropResult);
+
+  // Python: detect trust boundary violations (flask.session[key] = taintedVal)
+  if (language === 'python') {
+    const trustViolations = findPythonTrustBoundaryViolations(code, language, pythonTaintedVars);
+    for (const v of trustViolations) {
+      // Avoid duplicate: only add if no existing vulnerability for same sink line
+      const alreadyReported = vulnerabilities.some(
+        existing => existing.sink.line === v.sinkLine && existing.type === 'trust_boundary'
+      );
+      if (!alreadyReported) {
+        vulnerabilities.push({
+          type: 'trust_boundary',
+          cwe: 'CWE-501',
+          severity: 'medium',
+          source: { line: v.sourceLine, type: 'http_param' },
+          sink: { line: v.sinkLine, type: 'trust_boundary' },
+          confidence: 0.85,
+        });
+      }
+    }
+  }
 
   const analysisTime = performance.now() - analysisStart;
   const totalTime = performance.now() - startTime;

@@ -379,6 +379,15 @@
       "note": "etree.iterfind() with XPath expression"
     },
     {
+      "method": "select",
+      "class": "elementpath",
+      "type": "xpath_injection",
+      "cwe": "CWE-643",
+      "severity": "high",
+      "arg_positions": [1],
+      "note": "elementpath.select(root, query) - XPath injection via query param"
+    },
+    {
       "method": "parse",
       "class": "etree",
       "type": "xxe",
