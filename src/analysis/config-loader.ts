@@ -693,7 +693,6 @@ export const DEFAULT_SINKS: SinkPattern[] = [
   { method: 'getPath', class: 'BaseFileSystem', type: 'path_traversal', cwe: 'CWE-22', severity: 'high', arg_positions: [0] },
   { method: 'getPathMatcher', class: 'BaseFileSystem', type: 'path_traversal', cwe: 'CWE-22', severity: 'high', arg_positions: [0] },
   { method: 'getFileStores', class: 'RootedFileSystem', type: 'path_traversal', cwe: 'CWE-22', severity: 'high', arg_positions: [0] },
-  { method: 'deleteRecursive', class: 'CommonTestSupportUtils', type: 'path_traversal', cwe: 'CWE-22', severity: 'high', arg_positions: [0] },
   // SftpFileSystemProvider
   { method: 'move', class: 'SftpFileSystemProvider', type: 'path_traversal', cwe: 'CWE-22', severity: 'high', arg_positions: [0, 1] },
   { method: 'copy', class: 'SftpFileSystemProvider', type: 'path_traversal', cwe: 'CWE-22', severity: 'high', arg_positions: [0, 1] },
@@ -743,18 +742,6 @@ export const DEFAULT_SINKS: SinkPattern[] = [
   { method: 'createPlainAccessConfig', class: 'MQClientAPIImpl', type: 'path_traversal', cwe: 'CWE-22', severity: 'high', arg_positions: [0] },
   // XWiki velocity introspector
   { method: 'SecureIntrospector', class: 'constructor', type: 'path_traversal', cwe: 'CWE-22', severity: 'high', arg_positions: [0] },
-  // Generic test methods that process paths
-  { method: 'testLifeCycle', type: 'path_traversal', cwe: 'CWE-22', severity: 'medium', arg_positions: [] },
-  { method: 'testPathAccess', type: 'path_traversal', cwe: 'CWE-22', severity: 'medium', arg_positions: [] },
-  { method: 'single', type: 'path_traversal', cwe: 'CWE-22', severity: 'medium', arg_positions: [] },
-  { method: 'invalidPath', type: 'path_traversal', cwe: 'CWE-22', severity: 'medium', arg_positions: [] },
-  { method: 'invalidPathWithPreviousDirectoryAllEncoded', type: 'path_traversal', cwe: 'CWE-22', severity: 'medium', arg_positions: [] },
-  // Embedded server test methods
-  { method: 'create', class: 'EmbeddedJettyFactoryTest', type: 'path_traversal', cwe: 'CWE-22', severity: 'medium', arg_positions: [] },
-  { method: 'create_withThreadPool', class: 'EmbeddedJettyFactoryTest', type: 'path_traversal', cwe: 'CWE-22', severity: 'medium', arg_positions: [] },
-  { method: 'create_withNullThreadPool', class: 'EmbeddedJettyFactoryTest', type: 'path_traversal', cwe: 'CWE-22', severity: 'medium', arg_positions: [] },
-  // Camel file tests
-  { method: 'testProducerComplexByExpression', type: 'path_traversal', cwe: 'CWE-22', severity: 'medium', arg_positions: [] },
 
   // XSS (CWE-79)
   { method: 'write', class: 'PrintWriter', type: 'xss', cwe: 'CWE-79', severity: 'high', arg_positions: [0] },
