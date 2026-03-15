@@ -12,26 +12,15 @@ This file tracks pending improvements and known issues for the circle-ir core li
 
 ## Test Coverage Improvements
 
-Current overall coverage: ~80%. Target: ≥75% (met). Areas below threshold that need attention:
+Current overall coverage: ~80%. Target: ≥75% (met).
 
 | File | Coverage | Priority | Notes |
 |------|----------|----------|-------|
-| `src/analysis/advisory-db.ts` | 8.86% | P2 | Rust advisory database lookup |
-| `src/analysis/cargo-parser.ts` | 3.48% | P2 | Cargo.toml/Cargo.lock parsing |
-| `src/analysis/dependency-scanner.ts` | 6.3% | P2 | Dependency vulnerability scanning |
-| `src/analysis/constant-propagation/index.ts` | 42.71% | P1 | Core constant propagation entry |
-| `src/core/extractors/imports.ts` | 61.7% | P1 | Import extraction logic |
-| `src/core/extractors/types.ts` | 69.69% | P2 | Type extraction logic |
-| `src/core/extractors/dfg.ts` | 70.97% | P2 | Data flow graph extraction |
-| `src/languages/plugins/base.ts` | 30% | P1 | Base language plugin |
+| `src/languages/plugins/bash.ts` | ~60% | P2 | Bash language plugin |
 
 ### Test Tasks
 
-- [ ] **P1**: Add tests for `constant-propagation/index.ts` edge cases
-- [ ] **P1**: Add tests for `imports.ts` cross-file resolution scenarios
-- [ ] **P1**: Add tests for `base.ts` language plugin abstract methods
-- [ ] **P2**: Add tests for Rust dependency scanning (advisory-db, cargo-parser, dependency-scanner)
-- [ ] **P2**: Add tests for `types.ts` complex type hierarchies
+- [ ] **P2**: Add tests for Bash plugin edge cases (command substitution, here-docs)
 - [ ] **P2**: Add tests for `dfg.ts` inter-procedural data flow
 
 ---
@@ -44,29 +33,30 @@ Current overall coverage: ~80%. Target: ≥75% (met). Areas below threshold that
 |----------|--------|---------|-------|-----------------|----------|
 | Java | ✅ Complete | ✅ Spring, JAX-RS, Servlet | ✅ SQL, Cmd, XSS, Path, LDAP | 100% OWASP | - |
 | JavaScript/TS | ✅ Complete | ✅ Express, Node.js | ✅ SQL, Cmd, XSS, Path | 100% NodeGoat | - |
-| Python | ✅ Complete | ⚠️ Basic | ⚠️ Basic | 25.2% OWASP | P1 |
+| Python | ✅ Complete | ✅ Flask, Django, FastAPI | ✅ SQL, Cmd, XSS, XPath | 63.8% CWE-Bench | - |
 | Rust | ✅ Complete | ⚠️ Actix, Rocket | ⚠️ Diesel, Tokio | 100% CWE-Bench | - |
 | Bash/Shell | ✅ Complete | ⚠️ Basic (read only) | ✅ eval, sh/bash -c, mysql/psql, cat/rm/cp/mv, curl/wget | 68.2% TPR, 0% FPR (31 synthetic) | P2 |
 | Go | ❌ No parser | - | - | - | P3 |
 
 ### Pending Language Improvements
 
-#### Python (P1 - High Priority)
-- [ ] Add Django source patterns (request.GET, request.POST, request.FILES)
-- [ ] Add Django sink patterns (ORM raw queries, template rendering)
-- [ ] Add Flask source patterns (request.args, request.form, request.json)
-- [ ] Add Flask sink patterns (render_template_string, subprocess)
-- [ ] Add FastAPI source patterns (Query, Path, Body parameters)
-- [ ] Add SQLAlchemy sink patterns (text(), execute())
-- [ ] Add Jinja2 XSS sink patterns
-- [ ] Improve Python benchmark score from 25.2% to >75%
+#### Python (Complete — 63.8% on CWE-Bench-Java)
+- [x] Add Django source patterns (request.GET, request.POST, request.FILES)
+- [x] Add Flask source patterns (request.args, request.form, request.json)
+- [x] Add FastAPI source patterns (query_params, path_params)
+- [x] Add Flask sink patterns (render_template_string, subprocess)
+- [x] Add SQLAlchemy sink patterns (text(), execute())
+- [x] Add XPath injection detection with apostrophe sanitizer recognition
+- [x] Add trust boundary violation detection (flask.session writes)
+- [ ] Add Jinja2 XSS sink patterns (P2)
+- [ ] Add MyBatis/Django ORM additional raw query patterns (P2)
 
 #### JavaScript/TypeScript (P2 - Medium Priority)
-- [ ] Add Fastify source/sink patterns
-- [ ] Add Koa source/sink patterns
-- [ ] Add Next.js API route patterns
-- [ ] Add Prisma ORM sink patterns
-- [ ] Add TypeORM sink patterns
+- [x] Add Fastify source/sink patterns
+- [x] Add Koa source/sink patterns
+- [x] Add Prisma ORM unsafe raw query sinks
+- [ ] Add Next.js API route patterns (P2)
+- [ ] Add TypeORM sink patterns (P2)
 
 #### Rust (P3 - Lower Priority)
 - [ ] Add Axum framework patterns
@@ -129,4 +119,4 @@ Before any release:
 
 ---
 
-*Last updated: 2025-02-12*
+*Last updated: 2026-03-14*

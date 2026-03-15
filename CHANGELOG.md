@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **JS/Python: language auto-detection from filename** (`circle-pack/runner.ts`) — API requests that omit `language` now auto-detect from the filename extension (`.js`→`javascript`, `.ts`→`typescript`, `.py`→`python`, `.rs`→`rust`, `.sh`→`bash`); previously all fell back to `java`, causing JS/Python patterns to never fire
+- **JS/Python: language auto-detection from filename** — requests that omit `language` now auto-detect from the filename extension (`.js`→`javascript`, `.ts`→`typescript`, `.py`→`python`, `.rs`→`rust`, `.sh`→`bash`); previously all fell back to `java`, causing JS/Python patterns to never fire
 - **JS: SSRF via `http.get`/`https.get`** — added `{ method: 'get', class: 'http', ... }` and `https` entries to Node.js SSRF sinks in `config-loader.ts`; `http.get(url, callback)` now correctly produces CWE-918 (SSRF)
 - **JS: command injection via destructured `exec`/`spawn`** — class-less entries for `spawn`, `spawnSync`, `execFile` added to `config-loader.ts`; combined with existing `exec`/`execSync` entries, all `child_process` forms now detected
 - **Python: XSS via Flask route `return` statements** — added `findPythonReturnXSSSinks()` to detect `return '<html>...' + tainted_var` patterns in Flask routes; these are return statements, not call nodes, so they were invisible to the standard `findSinks()` path
@@ -57,10 +57,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Rust: `{self}` in use list, aliased item in use list, nested scoped path in use list, aliased nested scoped path with `::`, bare use identifier
 - **Test count 730 → 743**
 
-### Changed
-
-- `circle-ir-ai`: `Record<SupportedLanguage, T>` exhaustive objects updated to include `bash` key in `dead-code/detector.ts`, `llm/language-context.ts`, `project/analyzer.ts`, `project/two-phase-analyzer.ts`, `security-scan/scanner.ts`
-
 ## [3.6.0] - 2026-03-11
 
 ### Added
@@ -70,7 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Bash `nodeTypesToCollect` in `analyzer.ts`** — added `command`, `function_definition`, `variable_assignment`, `declaration_command`, `if_statement`, `for_statement`, `c_style_for_statement`, `while_statement`
 - **Plugin source/sink merging in `analyzer.ts`** — language plugin `getBuiltinSources()` and `getBuiltinSinks()` are now merged into `baseConfig` at analysis time; enables pure-plugin languages like Bash to define their patterns without YAML config files
 - **`'bash'` added to all three `SupportedLanguage` types** — `core/parser.ts`, `types/index.ts`, `languages/types.ts`; `'c'` and `'cpp'` synced into `languages/types.ts` for consistency
-- **Bash synthetic benchmark** (`circle-ir-ai`) — 31 test cases covering CWE-78/94/89/22/918; scores 68.2% TPR (15 TP, 9 TN, 0 FP, 7 FN); 7 FNs are curl/wget command-substitution patterns requiring DFG tracking
+- **Bash synthetic benchmark** — 31 test cases covering CWE-78/94/89/22/918; scores 68.2% TPR (15 TP, 9 TN, 0 FP, 7 FN); 7 FNs are curl/wget command-substitution patterns requiring DFG tracking
 
 ### Changed
 
@@ -93,7 +89,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Koa taint sources** — `ctx.header`, `ctx.headers` (http_header), `ctx.host`, `ctx.hostname` (http_header), `ctx.path`, `ctx.url` (http_path), `ctx.querystring` (http_param) for Koa context objects
 - **Prisma unsafe raw query sinks** — `$executeRawUnsafe` and `$queryRawUnsafe` (CWE-89, critical); the parameterized `$executeRaw`/`$queryRaw` template literal variants are intentionally excluded as they are safe
 - **Test coverage improvements** — imports.ts 61.7% → 77.6%, types.ts 69.7% → 93.2%, dfg.ts 71% → 85.87%, base.ts 30% → 96.66%, constant-propagation/index.ts 77.66% → 100%, constant-propagation/propagator.ts 70.25% → 75.39%; 716 total tests (up from 653)
-- **CI/CD** — Docker workflow now triggers on `circle-pack-v*` tags in addition to bare `v*` tags
 
 ## [3.3.3] - 2026-03-09
 
@@ -179,7 +174,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **OWASP Benchmark**: +100% (TPR: 100%, FPR: 0%, 1415/1415 test cases)
 - **Juliet Test Suite**: +100% (156/156 test cases)
 - **SecuriBench Micro**: 97.7% TPR, 6.7% FPR (105/108 vulns detected)
-- **CWE-Bench-Java**: 81.7% with LLM (98/120 projects, vs CodeQL 22.5%, IRIS+GPT-4 45.8%)
+- **CWE-Bench-Java**: 42.5% static (51/120 real-world CVEs, vs CodeQL 22.5%, IRIS+GPT-4 45.8%)
 
 ### Technical Highlights
 
@@ -190,6 +185,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Per-index collection taint tracking
 - Language plugin architecture
 
+[3.8.2]: https://github.com/cogniumhq/circle-ir/releases/tag/v3.8.2
+[3.8.1]: https://github.com/cogniumhq/circle-ir/releases/tag/v3.8.1
+[3.8.0]: https://github.com/cogniumhq/circle-ir/releases/tag/v3.8.0
+[3.7.0]: https://github.com/cogniumhq/circle-ir/releases/tag/v3.7.0
+[3.6.0]: https://github.com/cogniumhq/circle-ir/releases/tag/v3.6.0
+[3.5.0]: https://github.com/cogniumhq/circle-ir/releases/tag/v3.5.0
+[3.4.0]: https://github.com/cogniumhq/circle-ir/releases/tag/v3.4.0
+[3.3.3]: https://github.com/cogniumhq/circle-ir/releases/tag/v3.3.3
+[3.3.2]: https://github.com/cogniumhq/circle-ir/releases/tag/v3.3.2
 [3.3.1]: https://github.com/cogniumhq/circle-ir/releases/tag/v3.3.1
 [3.3.0]: https://github.com/cogniumhq/circle-ir/releases/tag/v3.3.0
 [3.1.0]: https://github.com/cogniumhq/circle-ir/releases/tag/v3.1.0

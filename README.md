@@ -5,7 +5,7 @@ A high-performance Static Application Security Testing (SAST) library for detect
 ## Features
 
 - **Taint Analysis**: Track data flow from sources (user input) to sinks (dangerous operations)
-- **Multi-language Support**: Java, JavaScript/TypeScript, Python, Rust
+- **Multi-language Support**: Java, JavaScript/TypeScript, Python, Rust, Bash/Shell
 - **High Accuracy**: 100% on OWASP Benchmark, 100% on Juliet Test Suite, 97.7% TPR on SecuriBench Micro
 - **Universal**: Works in Node.js, browsers, and Cloudflare Workers
 - **Zero External Dependencies**: Core analysis runs without network calls or external services
@@ -14,8 +14,7 @@ A high-performance Static Application Security Testing (SAST) library for detect
 
 ## Related Packages
 
-- **[circle-ir-ai](https://github.com/cogniumhq/circle-ir-ai)**: LLM-enhanced analysis with CLI
-- **[circle-pack](https://github.com/cogniumhq/circle-pack)**: Cloudflare Workers API deployment
+- **[circle-ir-ai](https://github.com/cogniumhq/circle-ir-ai)**: LLM-enhanced analysis layer — adds discovery mode, CLI, and benchmark runners on top of circle-ir
 
 ## Installation
 
@@ -127,9 +126,10 @@ const response = await analyzeForAPI(code, 'File.java', 'java');
 | Language | Parser | Frameworks |
 |----------|--------|------------|
 | **Java** | tree-sitter-java | Spring, JAX-RS, Servlet API |
-| **JavaScript/TypeScript** | tree-sitter-javascript | Express, Fastify, Node.js |
+| **JavaScript/TypeScript** | tree-sitter-javascript | Express, Fastify, Koa, Node.js |
 | **Python** | tree-sitter-python | Flask, Django, FastAPI |
 | **Rust** | tree-sitter-rust | Actix-web, Rocket, Axum |
+| **Bash/Shell** | tree-sitter-bash | Shell scripts (.sh, .bash, .zsh, .ksh) |
 
 ### Multi-Language Examples
 
@@ -183,12 +183,17 @@ sources:
 
 ## Benchmark Results
 
+All scores below are for **circle-ir static analysis only** (no LLM).
+
 | Benchmark | Score | Details |
 |-----------|-------|---------|
 | **OWASP Benchmark** | +100% | TPR 100%, FPR 0% (1415 test cases) |
 | **Juliet Test Suite** | +100% | 156/156 test cases, 9 CWEs |
 | **SecuriBench Micro** | 97.7% TPR | 105/108 vulns detected, 6.7% FPR |
-| **CWE-Bench-Java** | 81.7% (with LLM) | 98/120 projects (vs CodeQL 22.5%, IRIS+GPT-4 45.8%) |
+| **CWE-Bench-Java** | 42.5% | 51/120 real-world CVEs (vs CodeQL 22.5%, IRIS+GPT-4 45.8%) |
+| **Bash Synthetic** | 68.2% TPR | 15 TP, 9 TN, 0 FP on 31 synthetic test cases |
+
+> With [circle-ir-ai](https://github.com/cogniumhq/circle-ir-ai) LLM discovery mode, CWE-Bench-Java reaches **81.7%** (98/120 with Claude Opus).
 
 ## Documentation
 

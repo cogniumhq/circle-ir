@@ -14,7 +14,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 circle-ir is the core TypeScript SAST library for taint analysis. It detects data flow vulnerabilities by tracking data from user-controlled sources (HTTP inputs, environment variables, etc.) to dangerous sinks (SQL queries, command execution, etc.) using Tree-sitter for parsing.
 
-This is the **core library** in the cognitim monorepo. For CLI, benchmarks, and LLM-enhanced analysis, see `circle-ir-ai`.
+For CLI, benchmarks, and LLM-enhanced analysis, see [circle-ir-ai](https://github.com/cogniumhq/circle-ir-ai).
 
 ## Build Commands
 
@@ -109,7 +109,7 @@ The spec includes an Implementation Status table tracking Python (reference) vs 
 
 ## Test Coverage
 
-- 624 tests passing
+- 743+ tests passing
 - 75%+ coverage required
 - See `TODO.md` for areas needing additional test coverage
 
@@ -154,12 +154,14 @@ When reviewing or modifying circle-ir, verify these requirements:
 
 Current language support status (see TODO.md for details):
 
-| Priority | Language | Status | Next Steps |
-|----------|----------|--------|------------|
-| - | Java | Complete | Maintenance only |
-| - | JavaScript/TS | Complete | Maintenance only |
-| P1 | Python | Partial | Add Django, Flask, FastAPI patterns |
-| P3 | Rust | Partial | Add Axum, SQLx patterns |
+| Priority | Language | Status | Notes |
+|----------|----------|--------|-------|
+| - | Java | Complete | 100% OWASP Benchmark |
+| - | JavaScript/TS | Complete | Express, Fastify, Koa, Prisma |
+| - | Python | Complete | Flask, Django, FastAPI — 63.8% CWE-Bench |
+| - | Bash/Shell | Complete | 68.2% TPR on synthetic benchmark |
+| P2 | Rust | Partial | Add Axum, SQLx patterns |
+| P3 | Go | Not started | tree-sitter-go available when ready |
 
 ## Common Tasks
 
