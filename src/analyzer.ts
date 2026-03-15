@@ -2,7 +2,7 @@
  * Circle-IR Analyzer
  *
  * Main entry point for analyzing source code and producing Circle-IR output.
- * This is the core analyzer - for LLM-enhanced analysis, use circle-ir-ai.
+ * This is the core static analyzer. LLM-based verification and discovery are out of scope for this library.
  */
 
 import type { CircleIR, AnalysisResponse, Vulnerability, Enriched, TaintSource, TypeInfo, SourceType, SinkType } from './types/index.js';

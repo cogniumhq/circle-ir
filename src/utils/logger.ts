@@ -9,7 +9,7 @@
  *   logger.info('Processing file', { file: 'test.java' });
  *   logger.error('Failed to parse', { error: err.message });
  *
- * Injecting a custom logger (e.g. from circle-pack):
+ * Injecting a custom logger (e.g. pino):
  *   import pino from 'pino';
  *   import { setLogger } from 'circle-ir';
  *   setLogger(pino({ level: 'debug' }));

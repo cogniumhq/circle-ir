@@ -10,20 +10,14 @@ export default defineConfig({
       provider: 'v8',
       include: ['src/**/*.ts'],
       exclude: [
-        'src/browser.ts',
-        'src/worker.ts',
-        'src/cli/**',           // CLI is integration-tested
-        'src/types/**',         // Type definitions only
-        'src/benchmark/runner.ts',  // Uses file system, integration-tested
-        'src/benchmark/report.ts',  // Output formatting
+        'src/browser.ts',       // Browser entry point
+        'src/worker.ts',        // Cloudflare Workers entry point
         'src/index.ts',         // Re-exports only
-        'src/agents/**',        // LLM agents - require API, integration-tested
-        'src/llm/enrichment.ts',   // LLM enrichment - requires API
-        'src/llm/verification.ts', // LLM verification - requires API
-        'src/llm/index.ts',     // Re-exports only
-        'src/resolution/**',    // Project-level analysis, tested in circle-ir-ai
+        'src/core-lib.ts',      // Re-exports only
+        'src/types/**',         // Type definitions only
         'src/languages/types.ts',  // Type definitions only
         'src/analysis/constant-propagation/types.ts',  // Type definitions only
+        'src/resolution/**',    // Cross-file resolution (covered by integration tests)
       ],
       thresholds: {
         statements: 75,
