@@ -14,7 +14,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 circle-ir is the core TypeScript SAST library for taint analysis. It detects data flow vulnerabilities by tracking data from user-controlled sources (HTTP inputs, environment variables, etc.) to dangerous sinks (SQL queries, command execution, etc.) using Tree-sitter for parsing.
 
-For CLI, benchmarks, and LLM-enhanced analysis, see [circle-ir-ai](https://github.com/cogniumhq/circle-ir-ai).
+This is a standalone static analysis library. LLM-based enrichment and discovery are out of scope.
 
 ## Build Commands
 
@@ -119,8 +119,8 @@ When reviewing or modifying circle-ir, verify these requirements:
 
 ### Independence (Critical)
 - [ ] **Browser + Node.js compatible** - No Node.js-specific APIs (`process`, `fs`, `path`, `child_process`, `os`) in library code. Must run in browser and Cloudflare Workers.
-- [ ] **No AI/LLM dependencies** - circle-ir must NOT depend on circle-ir-ai, OpenAI, Anthropic, or any LLM libraries
-- [ ] **No cross-package imports** - Only import from within circle-ir, never from circle-ir-ai or circle-pack
+- [ ] **No AI/LLM dependencies** - circle-ir must NOT depend on any LLM libraries (OpenAI, Anthropic, etc.)
+- [ ] **No external package imports** - Only import from within circle-ir; never from other packages not listed in dependencies
 - [ ] **Minimal dependencies** - Only allowed: `web-tree-sitter`, `yaml`. No Node.js-only packages. Logger is zero-dependency with DI via `setLogger()`.
 
 ### Language Abstraction

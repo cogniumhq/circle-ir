@@ -2,13 +2,17 @@
 /**
  * Node.js Example - Circle-IR Core Library
  *
- * This example demonstrates how to use circle-ir-core to:
+ * This example demonstrates how to use circle-ir to:
  * 1. Parse Java code
  * 2. Extract IR components (types, calls, CFG, DFG)
  * 3. Detect taint sources and sinks
  * 4. Find source-to-sink flows
  *
- * Run: npx tsx examples/node-example.ts
+ * Setup:
+ *   npm install circle-ir
+ *
+ * Run:
+ *   npx tsx node-example.ts
  */
 
 import {
@@ -25,7 +29,7 @@ import {
   analyzeConstantPropagation,
   isFalsePositive,
   getDefaultConfig,
-} from '../src/core-lib.js';
+} from 'circle-ir/core';
 
 // Sample vulnerable Java code
 const vulnerableCode = `

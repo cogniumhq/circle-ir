@@ -12,10 +12,6 @@ A high-performance Static Application Security Testing (SAST) library for detect
 - **Browser Compatible**: Tree-sitter WASM for universal parsing
 - **Configuration-Driven**: YAML/JSON patterns for sources, sinks, and sanitizers
 
-## Related Packages
-
-- **[circle-ir-ai](https://github.com/cogniumhq/circle-ir-ai)**: LLM-enhanced analysis layer — adds discovery mode, CLI, and benchmark runners on top of circle-ir
-
 ## Installation
 
 ```bash
@@ -192,8 +188,6 @@ All scores below are for **circle-ir static analysis only** (no LLM).
 | **SecuriBench Micro** | 97.7% TPR | 105/108 vulns detected, 6.7% FPR |
 | **CWE-Bench-Java** | 42.5% | 51/120 real-world CVEs (vs CodeQL 22.5%, IRIS+GPT-4 45.8%) |
 | **Bash Synthetic** | 68.2% TPR | 15 TP, 9 TN, 0 FP on 31 synthetic test cases |
-
-> With [circle-ir-ai](https://github.com/cogniumhq/circle-ir-ai) LLM discovery mode, CWE-Bench-Java reaches **81.7%** (98/120 with Claude Opus).
 
 ## Documentation
 

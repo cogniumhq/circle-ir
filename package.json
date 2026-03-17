@@ -26,7 +26,6 @@
     "dist",
     "configs",
     "examples",
-    "wasm",
     "docs/SPEC.md"
   ],
   "scripts": {
@@ -54,6 +53,8 @@
     "typescript",
     "python",
     "rust",
+    "bash",
+    "shell",
     "tree-sitter",
     "sql-injection",
     "xss",
@@ -76,7 +77,7 @@
   },
   "funding": {
     "type": "github",
-    "url": "https://github.com/sponsors/cognitim"
+    "url": "https://github.com/sponsors/cogniumhq"
   },
   "engines": {
     "node": ">=18.0.0"
@@ -92,7 +93,6 @@
   },
   "devDependencies": {
     "@types/node": "^25.0.10",
-    "@types/unzipper": "^0.10.11",
     "@vitest/coverage-v8": "^3.0.0",
     "esbuild": "^0.27.2",
     "tree-sitter-bash": "^0.25.1",
@@ -101,7 +101,6 @@
     "tree-sitter-rust": "^0.24.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
-    "unzipper": "^0.12.3",
     "vitest": "^3.0.0"
   }
 }

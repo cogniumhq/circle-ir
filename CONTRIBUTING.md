@@ -58,10 +58,9 @@ npm run typecheck     # Type check only
 2. **Write tests** for any new functionality
 3. **Update documentation** if you're changing APIs or adding features
 4. **Run the test suite** and ensure all tests pass
-5. **Run benchmarks** if your changes affect analysis accuracy:
+5. **Verify coverage** if your changes affect analysis accuracy:
    ```bash
-   npx tsx scripts/run-juliet.ts --variant=01
-   npx tsx scripts/run-securibench.ts
+   npm run test:coverage
    ```
 6. **Submit a pull request** with a clear description of your changes
 

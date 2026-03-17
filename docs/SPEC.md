@@ -952,9 +952,9 @@ interface Vulnerability {
 
 ---
 
-## TODO: TypeScript Implementation
+## Implementation Status
 
-### Phase 1: Core (Must Have)
+### Phase 1: Core
 - [x] Meta extraction
 - [x] Type extraction (classes, interfaces, methods, fields)
 - [x] Call extraction (method invocations, arguments)
@@ -965,18 +965,18 @@ interface Vulnerability {
 - [x] Import extraction
 - [x] JSON serialization matching spec
 
-### Phase 2: Enhanced (Should Have)
+### Phase 2: Enhanced
 - [x] Export extraction
 - [x] Call resolution tracking
 - [x] Sanitizer detection
 - [x] DFG chains computation
 
-### Phase 3: LLM Integration (Nice to Have)
-- [x] Unresolved section population
-- [x] Enriched section from LLM
+### Phase 3: Extension Points
+- [x] Unresolved section population (static analysis identifies unresolvable patterns)
+- [x] Enriched section schema (optional, populated by analysis consumers)
 - [x] Finding generation
 
-### Phase 4: Project-Level (Done)
+### Phase 4: Project-Level
 - [x] Cross-file call graph
 - [x] Type hierarchy
 - [x] Taint path enumeration
