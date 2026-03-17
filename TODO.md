@@ -29,14 +29,14 @@ Current overall coverage: ~80%. Target: ≥75% (met).
 
 ### Current Status
 
-| Language | Parser | Sources | Sinks | Benchmark Score | Priority |
-|----------|--------|---------|-------|-----------------|----------|
-| Java | ✅ Complete | ✅ Spring, JAX-RS, Servlet | ✅ SQL, Cmd, XSS, Path, LDAP | 100% OWASP | - |
-| JavaScript/TS | ✅ Complete | ✅ Express, Node.js | ✅ SQL, Cmd, XSS, Path | 100% NodeGoat | - |
-| Python | ✅ Complete | ✅ Flask, Django, FastAPI | ✅ SQL, Cmd, XSS, XPath | 63.8% CWE-Bench | - |
-| Rust | ✅ Complete | ⚠️ Actix, Rocket | ⚠️ Diesel, Tokio | 100% CWE-Bench | - |
-| Bash/Shell | ✅ Complete | ⚠️ Basic (read only) | ✅ eval, sh/bash -c, mysql/psql, cat/rm/cp/mv, curl/wget | 68.2% TPR, 0% FPR (31 synthetic) | P2 |
-| Go | ❌ No parser | - | - | - | P3 |
+| Language | Benchmark Score | Sources/Sinks Coverage | Priority |
+|----------|-----------------|------------------------|----------|
+| Java | 100% OWASP, 100% Juliet | ✅ Complete (Spring, JAX-RS, Servlet) | Maintenance |
+| JavaScript/TS | 100% NodeGoat | ✅ Complete (Express, Fastify, Koa, Prisma) | P2 additions |
+| Python | 63.8% CWE-Bench | ✅ Complete (Flask, Django, FastAPI) | P2 improvements |
+| Rust | 100% CWE-Bench | ⚠️ Partial (needs Axum, SQLx) | P3 |
+| Bash/Shell | 68.2% TPR, 0% FPR | ⚠️ Basic (read source only) | P2 |
+| Go | - | ❌ Not started | P3 |
 
 ### Pending Language Improvements
 

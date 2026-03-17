@@ -384,14 +384,14 @@ src/
 
 | Target | Format | Use Case |
 |--------|--------|----------|
-| Node.js | ES2022 | CLI, scripts |
-| Browser | ESM bundle | Web UI |
-| Worker | ESM bundle | Serverless API |
+| Node.js | ES2022 | CLI, scripts, servers |
+| Browser | ESM bundle | Web UI, in-browser analysis |
+| Core | ESM + CJS | Universal library bundle |
 
 ```bash
 npm run build           # Node.js
 npm run build:browser   # Browser bundle
-npm run build:worker    # Cloudflare Worker
+npm run build:core      # Core library (ESM + CJS)
 npm run build:all       # All targets
 ```
 

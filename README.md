@@ -1,13 +1,13 @@
 # circle-ir
 
-A high-performance Static Application Security Testing (SAST) library for detecting security vulnerabilities through taint analysis. Works in Node.js, browsers, and Cloudflare Workers.
+A high-performance Static Application Security Testing (SAST) library for detecting security vulnerabilities through taint analysis. Works in Node.js and browsers.
 
 ## Features
 
 - **Taint Analysis**: Track data flow from sources (user input) to sinks (dangerous operations)
 - **Multi-language Support**: Java, JavaScript/TypeScript, Python, Rust, Bash/Shell
 - **High Accuracy**: 100% on OWASP Benchmark, 100% on Juliet Test Suite, 97.7% TPR on SecuriBench Micro
-- **Universal**: Works in Node.js, browsers, and Cloudflare Workers
+- **Universal**: Works in Node.js and browsers with environment-agnostic core
 - **Zero External Dependencies**: Core analysis runs without network calls or external services
 - **Browser Compatible**: Tree-sitter WASM for universal parsing
 - **Configuration-Driven**: YAML/JSON patterns for sources, sinks, and sanitizers

@@ -21,7 +21,7 @@ This is a standalone static analysis library. LLM-based enrichment and discovery
 ```bash
 npm run build           # Compile TypeScript to dist/
 npm run build:browser   # Bundle for browser (ESM) -> dist/browser/circle-ir.js
-npm run build:worker    # Bundle for Cloudflare Workers -> dist/worker/index.js
+npm run build:core      # Bundle core library (ESM + CJS) -> dist/core/
 npm run build:all       # Run all builds
 
 npm run typecheck       # Type check without emitting
@@ -150,18 +150,11 @@ When reviewing or modifying circle-ir, verify these requirements:
 - [ ] **npm-ready** - package.json has: name, version, description, main, types, exports, repository, license
 - [ ] **Clean build** - `npm run build:all` succeeds without errors
 
-## Language Support Priorities
+## Language Support
 
-Current language support status (see TODO.md for details):
+**Supported Languages**: Java, JavaScript/TypeScript, Python, Rust, Bash/Shell
 
-| Priority | Language | Status | Notes |
-|----------|----------|--------|-------|
-| - | Java | Complete | 100% OWASP Benchmark |
-| - | JavaScript/TS | Complete | Express, Fastify, Koa, Prisma |
-| - | Python | Complete | Flask, Django, FastAPI — 63.8% CWE-Bench |
-| - | Bash/Shell | Complete | 68.2% TPR on synthetic benchmark |
-| P2 | Rust | Partial | Add Axum, SQLx patterns |
-| P3 | Go | Not started | tree-sitter-go available when ready |
+For detailed status, benchmark scores, and pending improvements, see [TODO.md](TODO.md#language-support).
 
 ## Common Tasks
 

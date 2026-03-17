@@ -89,23 +89,16 @@ docs/
 
 ## Adding New Vulnerability Patterns
 
+See [CLAUDE.md](CLAUDE.md#common-tasks) for detailed instructions on:
+- Adding new taint sources
+- Adding new taint sinks
+- Adding language support
+
+Brief summary:
 1. Add source patterns to `configs/sources/*.yaml`
 2. Add sink patterns to `configs/sinks/*.yaml`
 3. Write tests to verify detection
 4. Run benchmarks to ensure no regressions
-
-### Source/Sink Configuration Format
-
-```yaml
-# configs/sources/example.yaml
-sources:
-  - method: getParameter
-    class: HttpServletRequest
-    type: http_parameter
-    cwe: CWE-79
-    severity: high
-    tainted_args: [return]
-```
 
 ## Reporting Issues
 
