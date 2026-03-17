@@ -112,4 +112,4 @@ Be respectful and constructive in all interactions. We're all here to build bett
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the ISC License.
+By contributing, you agree that your contributions will be licensed under the MIT License.

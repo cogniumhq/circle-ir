@@ -199,4 +199,4 @@ All scores below are for **circle-ir static analysis only** (no LLM).
 
 ## License
 
-ISC
+MIT
