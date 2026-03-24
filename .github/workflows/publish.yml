@@ -44,6 +44,9 @@ jobs:
       - name: Build all targets
         run: npm run build:all
 
+      - name: Self-analysis (dogfood)
+        run: npm run dogfood
+
       - name: Publish to npm
         run: npm publish --provenance --access public
         env:

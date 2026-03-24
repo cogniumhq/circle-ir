@@ -39,7 +39,8 @@
     "clean": "rm -rf dist coverage *.tsbuildinfo *.tgz",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build:all && npm test",
-    "prepack": "npm run build:all"
+    "prepack": "npm run build:all",
+    "dogfood": "npx tsx scripts/dogfood.ts"
   },
   "keywords": [
     "sast",
