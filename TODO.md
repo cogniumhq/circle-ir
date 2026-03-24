@@ -57,6 +57,8 @@ Current overall coverage: ~80%. Target: ≥75% (met).
 - [x] Add Prisma ORM unsafe raw query sinks
 - [ ] Add Next.js API route patterns (P2)
 - [ ] Add TypeORM sink patterns (P2)
+- [ ] **P2**: Narrow `.value` dom_input source pattern to require DOM context (currently matches any `.value` property access, causing FPs on internal objects like `ConstantValue.value`)
+- [ ] **P3**: Add constant-propagation awareness to `new Function()` sink detection (suppress when all arguments are string literals)
 
 #### Rust (P3 - Lower Priority)
 - [ ] Add Axum framework patterns
@@ -119,4 +121,4 @@ Before any release:
 
 ---
 
-*Last updated: 2026-03-14*
+*Last updated: 2026-03-24*

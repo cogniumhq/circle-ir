@@ -951,7 +951,7 @@ export const DEFAULT_SINKS: SinkPattern[] = [
   // Jenkins/CI Pipeline execution
   { method: 'executeScript', type: 'code_injection', cwe: 'CWE-94', severity: 'critical', arg_positions: [0] },
   { method: 'runScript', type: 'code_injection', cwe: 'CWE-94', severity: 'critical', arg_positions: [0] },
-  { method: 'evaluate', type: 'code_injection', cwe: 'CWE-94', severity: 'critical', arg_positions: [0] },
+  { method: 'evaluate', class: 'ScriptEngine', type: 'code_injection', cwe: 'CWE-94', severity: 'critical', arg_positions: [0] },
   { method: 'execute', class: 'Script', type: 'code_injection', cwe: 'CWE-94', severity: 'critical', arg_positions: [] },
   { method: 'run', class: 'Script', type: 'code_injection', cwe: 'CWE-94', severity: 'critical', arg_positions: [] },
   { method: 'checkout', class: 'SCM', type: 'code_injection', cwe: 'CWE-94', severity: 'high', arg_positions: [0] },
