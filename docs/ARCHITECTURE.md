@@ -236,60 +236,20 @@ const result = await analyze(code, filePath, 'java', {
 
 ### ADR-003: LLM-Augmented Analysis
 
-**Status:** Implemented
-**Impact:** Higher confidence verification, reduced false positives
+**Status:** Out of scope for circle-ir core — moved to **circle-ir-ai**
+**Impact:** circle-ir remains $0, deterministic, and zero-dependency
 
 #### Context
 Heuristic-based detection can produce false positives. Human-level reasoning can distinguish true vulnerabilities from false positives.
 
 #### Decision
-Integrate LLM capabilities for:
-1. **Enrichment:** Discover additional sources/sinks from code context
-2. **Verification:** Confirm taint paths are exploitable
-3. **Pattern Validation:** Verify heuristically-discovered patterns
+LLM integration (enrichment, verification, pattern validation) is **not** part of this library. circle-ir produces deterministic `SastFinding[]` output that a separate package (`circle-ir-ai`) can post-process with LLM reasoning. This keeps circle-ir:
+- Zero-cost to run
+- Deterministic and reproducible
+- Free of API keys and network dependencies
+- Safe to run in sandboxed / air-gapped environments
 
-#### Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    LLM Integration                          │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐   │
-│  │  Enrichment  │  │ Verification │  │ Pattern Verify   │   │
-│  │    Agent     │  │    Agent     │  │     Agent        │   │
-│  └──────────────┘  └──────────────┘  └──────────────────┘   │
-│         │                │                   │               │
-│         └────────────────┼───────────────────┘               │
-│                          ▼                                   │
-│                 ┌────────────────┐                           │
-│                 │   LLM Client   │                           │
-│                 │  (OpenAI API)  │                           │
-│                 └────────────────┘                           │
-│                          │                                   │
-│                          ▼                                   │
-│                 ┌────────────────┐                           │
-│                 │  LLM Proxy     │                           │
-│                 │ (configurable) │                           │
-│                 └────────────────┘                           │
-└─────────────────────────────────────────────────────────────┘
-```
-
-#### Configuration
-
-```bash
-# Environment variables
-LLM_BASE_URL=http://localhost:4000/v1
-LLM_API_KEY=your-api-key
-LLM_ENRICHMENT_MODEL=gpt-4
-LLM_VERIFICATION_MODEL=gpt-4
-```
-
-#### Graceful Degradation
-When LLM is unavailable:
-- Falls back to heuristic confidence
-- Reduces pattern confidence by 20%
-- Continues analysis without blocking
+The CWE-Bench-Java scores in the Benchmark section below that require LLM are circle-ir-ai results, not circle-ir results.
 
 ---
 
@@ -399,58 +359,62 @@ npm run build:all       # All targets
 
 ## Analysis Pipeline
 
-### Phase 1: Parsing & Extraction
+`analyze()` runs a single `AnalysisPipeline` of 11 sequential `AnalysisPass` implementations. Each pass declares a `category: PassCategory` and can emit `SastFinding` objects via `context.addFinding()`.
+
 ```
-Source Code → Tree-sitter → AST → Types, Calls, Imports
+Source Code
+    │
+    ▼
+Tree-sitter parse → AST
+    │
+    ▼
+IR Extraction → Types, Calls, CFG, DFG, Imports/Exports
+    │
+    ▼
+CodeGraph (lazy indexes: callsByMethod, defsByVar, usesAtLine, loopBodies, …)
+    │
+    ▼
+AnalysisPipeline (11 passes, sequential)
+    │
+    ├─ 1. TaintMatcherPass       (security)  — match source/sink configs against IR
+    ├─ 2. ConstantPropagationPass(security)  — track variable values, detect dead code
+    ├─ 3. LanguageSourcesPass    (security)  — enrich sources using language plugin
+    ├─ 4. SinkFilterPass         (security)  — filter sinks using constant propagation
+    ├─ 5. TaintPropagationPass   (security)  — enumerate source→sink paths via DFG
+    ├─ 6. InterproceduralPass    (security)  — cross-method taint tracking
+    ├─ 7. DeadCodePass           (reliability)   — CFG BFS; unreachable blocks → finding
+    ├─ 8. MissingAwaitPass       (reliability)   — unawaited async calls in JS/TS
+    ├─ 9. NPlusOnePass           (performance)   — DB/HTTP calls inside loopBodies()
+    ├─10. MissingPublicDocPass   (maintainability)— public API without doc comment
+    └─11. TodoInProdPass         (maintainability)— TODO/FIXME/HACK/XXX in non-test files
+    │
+    ▼
+PipelineRunResult
+    ├─ results: Map<passName, passResult>  — per-pass structured output
+    └─ findings: SastFinding[]             — all findings from passes 7–11
+    │
+    ▼
+CircleIR output
+    ├─ taint.flows   — security taint flows (from passes 1–6)
+    └─ findings      — quality findings (from passes 7–11)
 ```
 
-### Phase 2: IR Generation
-```
-AST → CFG (Control Flow Graph)
-    → DFG (Data Flow Graph)
-    → Meta (File metadata)
-```
+**For multi-file analysis**, `analyzeProject()` runs the full 11-pass pipeline on each file independently, then uses `ProjectGraph` → `CrossFilePass` to surface taint flows that span file boundaries, returning a `ProjectAnalysis` with `taint_paths`, `cross_file_calls`, and `type_hierarchy`.
 
-### Phase 3: Constant Propagation
-```
-AST + DFG → Variable tracking
-          → Dead code detection
-          → Collection taint tracking
-```
-
-### Phase 4: Pattern Discovery (Optional)
-```
-Types + Calls → Heuristic detection
-             → LLM verification
-             → Pattern cache
-```
-
-### Phase 5: Taint Analysis
-```
-Sources + Sinks + Config → Path enumeration
-                        → Sanitizer checking
-                        → Confidence scoring
-```
-
-### Phase 6: Filtering
-```
-Taint flows → Constant propagation filter
-           → Dead code filter
-           → Sanitizer filter
-           → Verified findings
-```
+See [docs/PASSES.md](PASSES.md) for the canonical pass registry with rule IDs, CWEs, and roadmap.
 
 ---
 
 ## Benchmark Performance
 
 ### Summary
-| Benchmark | TPR | FPR | Score |
-|-----------|-----|-----|-------|
-| **OWASP Benchmark** | 100% | 0% | **+100%** |
-| **Juliet Test Suite** | 100% | 0% | **+100%** |
-| **SecuriBench Micro** | 97.2% | 53.3% | +43.9% |
-| **CWE-Bench-Java** | 81.7% (with LLM) | - | **+81.7%** |
+| Benchmark | TPR | FPR | Score | Notes |
+|-----------|-----|-----|-------|-------|
+| **OWASP Benchmark** | 100% | 0% | **+100%** | circle-ir static only |
+| **Juliet Test Suite** | 100% | 0% | **+100%** | circle-ir static only |
+| **SecuriBench Micro** | 97.7% | 6.7% | **+91.0%** | circle-ir static only |
+| **CWE-Bench-Java** | 81.7% | - | **+81.7%** | circle-ir-ai (LLM-assisted) |
+| **CWE-Bench-Java** | 42.5% | - | **+42.5%** | circle-ir static only |
 
 ### OWASP Benchmark v1.2 (Perfect Score)
 - **2740 test cases, 0 false negatives, 0 false positives**
@@ -492,17 +456,19 @@ FPs primarily from: correlated predicates, custom sanitizers, strong updates.
 
 ## Future Directions
 
-1. **Inter-file Analysis:** Track taint across module boundaries
-2. **Type Inference:** Better receiver type resolution
-3. **Framework-Specific Plugins:** Spring, Struts, etc.
-4. **IDE Integration:** VS Code, IntelliJ extensions
-5. **CI/CD Integration:** GitHub Actions, GitLab CI
+1. **Phase 1 Group 2 passes:** null-deref, resource-leak, unchecked-return, sync-io-async, string-concat-loop
+2. **Metrics engine:** MetricRunner producing `FileMetrics` (cyclomatic complexity, CBO, Halstead, LOC)
+3. **Type Inference:** Better receiver type resolution for Java generics and polymorphism
+4. **Framework-Specific Plugins:** Spring Security, Struts, etc.
+5. **IDE Integration:** VS Code, IntelliJ extensions via LSP
+
+See [TODO.md](../TODO.md) for the phase-based roadmap.
 
 ---
 
 ## References
 
+- [Pass & Metric Registry](./PASSES.md)
 - [Circle-IR Specification](./SPEC.md)
-- [LLM Configuration](./LLM-CONFIG.md)
 - [OWASP Benchmark](https://owasp.org/www-project-benchmark/)
 - [CWE Database](https://cwe.mitre.org/)

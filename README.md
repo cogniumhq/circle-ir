@@ -1,12 +1,14 @@
 # circle-ir
 
-A high-performance Static Application Security Testing (SAST) library for detecting security vulnerabilities through taint analysis. Works in Node.js and browsers.
+A high-performance Static Application Security Testing (SAST) library for detecting security vulnerabilities through taint analysis, and code quality findings through an extensible analysis-pass pipeline. Works in Node.js and browsers.
 
 ## Features
 
 - **Taint Analysis**: Track data flow from sources (user input) to sinks (dangerous operations)
 - **Multi-language Support**: Java, JavaScript/TypeScript, Python, Rust, Bash/Shell
 - **High Accuracy**: 100% on OWASP Benchmark, 100% on Juliet Test Suite, 97.7% TPR on SecuriBench Micro
+- **11-Pass Pipeline**: Security taint passes + quality passes (dead code, missing await, N+1, doc coverage, TODO markers)
+- **Cross-File Analysis**: `analyzeProject()` surfaces taint flows that span multiple files
 - **Universal**: Works in Node.js and browsers with environment-agnostic core
 - **Zero External Dependencies**: Core analysis runs without network calls or external services
 - **Browser Compatible**: Tree-sitter WASM for universal parsing
@@ -31,11 +33,18 @@ await initAnalyzer();
 // Analyze Java code
 const result = await analyze(code, 'MyClass.java', 'java');
 
-// Check for vulnerabilities
+// Security taint flows
 for (const flow of result.taint.flows || []) {
   console.log(`Found ${flow.sink_type} vulnerability`);
   console.log(`  Source: line ${flow.source_line}`);
   console.log(`  Sink: line ${flow.sink_line}`);
+}
+
+// Quality findings from analysis passes (dead-code, missing-await, n-plus-one, etc.)
+for (const finding of result.findings || []) {
+  console.log(`[${finding.severity}] ${finding.rule_id} at line ${finding.line}`);
+  console.log(`  ${finding.message}`);
+  if (finding.fix) console.log(`  Fix: ${finding.fix}`);
 }
 ```
 
@@ -78,7 +87,7 @@ interface AnalyzerOptions {
 
 ### `analyze(code, filePath, language, options?)`
 
-Analyze source code and return Circle-IR output.
+Analyze a single file and return Circle-IR output.
 
 ```typescript
 const result = await analyze(code, 'File.java', 'java');
@@ -92,6 +101,38 @@ result.dfg        // Data flow graph
 result.taint      // Taint sources, sinks, flows
 result.imports    // Import statements
 result.exports    // Exported symbols
+result.findings   // SastFinding[] from all 11 analysis passes
+```
+
+### `analyzeProject(files, options?)`
+
+Analyze multiple files together to detect cross-file taint flows.
+
+```typescript
+import { analyzeProject } from 'circle-ir';
+
+const result = await analyzeProject([
+  { code: controllerCode, filePath: 'UserController.java', language: 'java' },
+  { code: serviceCode,    filePath: 'UserService.java',    language: 'java' },
+  { code: daoCode,        filePath: 'UserDao.java',        language: 'java' },
+]);
+
+// Per-file analysis (same as analyze() per file)
+for (const { file, analysis } of result.files) {
+  console.log(`${file}: ${analysis.taint.flows?.length ?? 0} intra-file flows`);
+}
+
+// Cross-file taint paths (the key deliverable)
+for (const path of result.taint_paths) {
+  console.log(`Cross-file ${path.sink.type}: ${path.source.file} → ${path.sink.file}`);
+  console.log(`  Confidence: ${path.confidence.toFixed(2)}, CWE: ${path.sink.cwe}`);
+}
+
+// Resolved inter-file method calls
+console.log(`${result.cross_file_calls.length} cross-file calls resolved`);
+
+// Project metadata
+console.log(`${result.meta.total_files} files, ${result.meta.total_loc} LOC`);
 ```
 
 ### `analyzeForAPI(code, filePath, language, options?)`
@@ -169,6 +210,42 @@ sources:
     tainted_args: [return]
 ```
 
+## SAST Findings & Quality Passes
+
+The 11-pass pipeline emits `SastFinding[]` via `result.findings`. Each finding is SARIF 2.1.0-aligned:
+
+```typescript
+interface SastFinding {
+  id: string;           // e.g. "dead-code-42"
+  rule_id: string;      // e.g. "dead-code"
+  category: PassCategory; // 'security' | 'reliability' | 'performance' | 'maintainability' | 'architecture'
+  severity: string;     // 'critical' | 'high' | 'medium' | 'low'
+  level: SarifLevel;    // 'error' | 'warning' | 'note' | 'none'
+  message: string;
+  file: string;
+  line: number;
+  cwe?: string;         // e.g. "CWE-561"
+  fix?: string;         // Instance-specific remediation hint
+  evidence?: Record<string, unknown>;
+}
+```
+
+**Current passes** (see [docs/PASSES.md](docs/PASSES.md) for the full registry):
+
+| Pass | rule_id | Category | CWE | Level |
+|------|---------|----------|-----|-------|
+| TaintMatcherPass | _(produces flows)_ | security | — | error |
+| ConstantPropagationPass | _(reduces FP)_ | security | — | — |
+| LanguageSourcesPass | _(enriches sources)_ | security | — | — |
+| SinkFilterPass | _(filters sinks)_ | security | — | — |
+| TaintPropagationPass | _(propagates taint)_ | security | — | error |
+| InterproceduralPass | _(cross-method)_ | security | — | error |
+| DeadCodePass | `dead-code` | reliability | CWE-561 | warning |
+| MissingAwaitPass | `missing-await` | reliability | CWE-252 | warning |
+| NPlusOnePass | `n-plus-one` | performance | CWE-1049 | warning |
+| MissingPublicDocPass | `missing-public-doc` | maintainability | — | note |
+| TodoInProdPass | `todo-in-prod` | maintainability | — | note |
+
 ## Key Analysis Features
 
 - **Constant Propagation**: Eliminates false positives by tracking variable values and detecting dead code
@@ -191,11 +268,11 @@ All scores below are for **circle-ir static analysis only** (no LLM).
 
 ## Documentation
 
+- [Pass & Metric Registry](docs/PASSES.md) - Canonical list of every pass and metric with rule_id, CWE, and status
 - [Circle-IR Specification](docs/SPEC.md) - IR format specification
 - [Architecture Guide](docs/ARCHITECTURE.md) - Detailed system architecture
-- [Contributing Guide](CONTRIBUTING.md) - How to contribute
 - [Changelog](CHANGELOG.md) - Version history
-- [TODO](TODO.md) - Pending improvements and roadmap
+- [TODO](TODO.md) - Phase-based roadmap
 
 ## License
 

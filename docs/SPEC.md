@@ -1,7 +1,7 @@
 # Circle-IR 3.0 Specification
 
 **Status**: Living Document
-**Last Updated**: 2025-01-25
+**Last Updated**: 2026-03-25
 **Implementation**: Python (reference) → TypeScript (target)
 
 ---
@@ -23,11 +23,12 @@
 | Sanitizers | ✅ (separate) | ✅ | Done |
 | Constant Propagation | ✅ | ✅ | Done |
 | Call Resolution | ⬜ | ✅ | Done |
-| Unresolved | ⬜ | ✅ | Done |
-| Enriched | ⬜ | ✅ | Done |
-| DFG Chains | ⬜ | ✅ | Done |
-| Project-Level | ⬜ | ✅ | Done |
-| Findings | ⬜ | ✅ | Done |
+| Unresolved | ⬜ | ⬜ | Pending |
+| Enriched | ⬜ | ⬜ | Pending |
+| DFG Chains | ⬜ | ⬜ | Pending |
+| Project-Level (`analyzeProject`) | ⬜ | ✅ | Done |
+| SAST Findings (`SastFinding[]`) | ⬜ | ✅ | Done (v3.9.1) |
+| Phase 1 passes (dead-code, missing-await, n-plus-one, missing-public-doc, todo-in-prod) | ⬜ | ✅ | Done (v3.9.1) |
 
 ---
 
@@ -45,10 +46,13 @@ Circle-IR produces JSON with this top-level structure:
   "taint": { },
   "imports": [ ],
   "exports": [ ],
+  "findings": [ ],
   "unresolved": [ ],
   "enriched": { }
 }
 ```
+
+`findings` is a `SastFinding[]` populated by the 11-pass `AnalysisPipeline`. Each finding is SARIF 2.1.0-aligned with `rule_id`, `category` (`PassCategory`), `severity`, `level` (`SarifLevel`), `file`, `line`, `cwe?`, `fix?`, and `evidence?`. See [docs/PASSES.md](PASSES.md) for the full pass registry.
 
 ---
 
