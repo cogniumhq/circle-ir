@@ -4,7 +4,7 @@
  * Main entry point for analyzing source code and producing Circle-IR output.
  * This is the core static analyzer. LLM-based verification and discovery are out of scope for this library.
  *
- * The analysis pipeline runs eleven sequential passes over a shared CodeGraph:
+ * The analysis pipeline runs sixteen sequential passes over a shared CodeGraph:
  *   1. TaintMatcherPass        — config-based source/sink extraction
  *   2. ConstantPropagationPass — dead-code detection, symbol table, field taint
  *   3. LanguageSourcesPass     — language-specific sources/sinks (JS, Python, getters)
@@ -16,6 +16,11 @@
  *   9. NPlusOnePass            — DB/HTTP calls inside loop bodies (CWE-1049)
  *  10. MissingPublicDocPass    — public methods/types without doc comments
  *  11. TodoInProdPass          — TODO/FIXME/HACK markers in production code
+ *  12. StringConcatLoopPass    — string += inside loops, O(n²) allocations (CWE-1046)
+ *  13. SyncIoAsyncPass         — blocking *Sync calls inside async functions (CWE-1050)
+ *  14. UncheckedReturnPass     — ignored boolean return from File.delete etc. (CWE-252)
+ *  15. NullDerefPass           — null-assigned var dereferenced without guard (CWE-476)
+ *  16. ResourceLeakPass        — stream/connection opened but never closed (CWE-772)
  */
 
 import type { CircleIR, AnalysisResponse, Vulnerability, Enriched, ProjectAnalysis, ProjectMeta } from './types/index.js';
@@ -57,6 +62,11 @@ import { MissingAwaitPass } from './analysis/passes/missing-await-pass.js';
 import { NPlusOnePass } from './analysis/passes/n-plus-one-pass.js';
 import { MissingPublicDocPass } from './analysis/passes/missing-public-doc-pass.js';
 import { TodoInProdPass } from './analysis/passes/todo-in-prod-pass.js';
+import { StringConcatLoopPass } from './analysis/passes/string-concat-loop-pass.js';
+import { SyncIoAsyncPass } from './analysis/passes/sync-io-async-pass.js';
+import { UncheckedReturnPass } from './analysis/passes/unchecked-return-pass.js';
+import { NullDerefPass } from './analysis/passes/null-deref-pass.js';
+import { ResourceLeakPass } from './analysis/passes/resource-leak-pass.js';
 
 // Helpers used by analyzeForAPI
 import {
@@ -281,6 +291,11 @@ export async function analyze(
     .add(new NPlusOnePass())
     .add(new MissingPublicDocPass())
     .add(new TodoInProdPass())
+    .add(new StringConcatLoopPass())
+    .add(new SyncIoAsyncPass())
+    .add(new UncheckedReturnPass())
+    .add(new NullDerefPass())
+    .add(new ResourceLeakPass())
     .run(graph, code, language, config);
 
   const sinkFilter = results.get('sink-filter')    as SinkFilterResult;

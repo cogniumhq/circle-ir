@@ -64,16 +64,16 @@ All 19 passes operate on the `taint` graph. SARIF level: `error`.
 
 | # | rule_id | CWE | level | graphs | status | Description |
 |---|---------|-----|-------|--------|--------|-------------|
-| 20 | `null-deref` | CWE-476 | error | dfg, cfg | phase-1 | Nullable source reaches dereference with no null guard on all CFG paths |
-| 21 | `resource-leak` | CWE-772 | error | cfg, dfg | phase-1 | Resource opened, not closed on at least one exception exit path |
+| 20 | `null-deref` | CWE-476 | error | dfg, cfg | shipped | Nullable source reaches dereference with no null guard on all CFG paths |
+| 21 | `resource-leak` | CWE-772 | error | cfg, dfg | shipped | Resource opened, not closed on at least one exception exit path |
 | 22 | `dead-code` | CWE-561 | warning | cfg | shipped | CFG block unreachable from any entry point |
 | 23 | `infinite-loop` | CWE-835 | error | cfg | phase-4 | CFG cycle with no exit edge dependent on mutable state |
 | 24 | `missing-await` | CWE-252 | warning | ast, cg | shipped | Async function called without `await`; Promise result discarded |
 | 25 | `double-close` | CWE-675 | warning | cfg, dfg | phase-4 | Resource `close()` reachable on 2+ paths that both execute |
 | 26 | `use-after-close` | CWE-672 | error | dfg, cfg | phase-4 | Read of variable after the resource it references was released |
-| 28 | `unchecked-return` | CWE-252 | warning | cg, dfg | phase-1 | Return value ignored where most callers check it (statistical) |
-| 48 | `sync-io-async` | CWE-1050 | warning | ast, cg | phase-1 | Blocking I/O call (`readFileSync`, `requests.get`) inside async function |
-| 50 | `string-concat-loop` | CWE-1046 | warning | dfg, cfg | phase-1 | `string +=` inside loop body (O(n²) allocations) |
+| 28 | `unchecked-return` | CWE-252 | warning | cg, dfg | shipped | Return value ignored where most callers check it (statistical) |
+| 48 | `sync-io-async` | CWE-1050 | warning | ast, cg | shipped | Blocking I/O call (`readFileSync`, `requests.get`) inside async function |
+| 50 | `string-concat-loop` | CWE-1046 | warning | dfg, cfg | shipped | `string +=` inside loop body (O(n²) allocations) |
 | 53 | `missing-guard-dom` | — | error | dom, taint | phase-4 | Auth check exists but does not dominate the sensitive operation |
 | 54 | `cleanup-verify` | CWE-772 | warning | dom, dfg | phase-4 | Resource cleanup does not post-dominate its acquisition |
 | 74 | `unhandled-exception` | CWE-390 | warning | throws, cg | phase-4 | Exception thrown, propagates through call chain with no catch |
@@ -135,7 +135,7 @@ All 19 passes operate on the `taint` graph. SARIF level: `error`.
 | Phase | Focus | Passes | New graphs |
 |-------|-------|--------|------------|
 | **0 (done)** | Architecture foundation | — | CodeGraph lazy indexes, AnalysisPipeline, ProjectGraph, CrossFilePass, taxonomy types |
-| **1 (in progress)** | High-impact SAST passes | ~~#22, #24, #45, #35, #36~~ ✓, #20, #21, #28, #48, #50, #79, #81, #82, #33, #68, #71, #72 | scope table, import graph |
+| **1 (in progress)** | High-impact SAST passes | ~~#22, #24, #45, #35, #36, #20, #21, #28, #48, #50~~ ✓, #79, #81, #82, #33, #68, #71, #72 | scope table, import graph |
 | **2** | Metrics engine | — (metrics, not passes) | `cognium metrics` command; MetricRunner; 38 metrics |
 | **4** | Advanced graphs + passes | #23, #25, #26, #46, #47, #53, #54, #62, #64, #66, #74, #75, #76, P22, P33 | dominator tree, exception flow, type hierarchy wired to taint |
 

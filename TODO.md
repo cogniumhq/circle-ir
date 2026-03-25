@@ -12,7 +12,7 @@ Working plan and task tracker for the circle-ir SAST library.
 | Phase | Status | Focus |
 |-------|--------|-------|
 | 0 — Architecture foundation | ✅ Complete | CodeGraph, AnalysisPipeline, ProjectGraph, taxonomy types |
-| 1 — High-impact SAST passes | 🔄 In Progress | Group 1 done (5 passes); Groups 2-4 pending |
+| 1 — High-impact SAST passes | 🔄 In Progress | Groups 1-2 done (10 passes); Groups 3-4 pending |
 | 2 — Metrics engine | Pending | MetricRunner, 38 metrics, `cognium metrics` command |
 | 4 — Advanced graphs + passes | Pending | Dominator tree, exception flow, type hierarchy wired |
 
@@ -23,7 +23,7 @@ Working plan and task tracker for the circle-ir SAST library.
 
 ## Phase 0 — Architecture Foundation ✅ Complete
 
-All items complete. 857/857 tests passing.
+All items complete. 897/897 tests passing.
 
 - [x] **CodeGraph** (`src/graph/code-graph.ts`) — lazy Map indexes; `loopBodies()` via CFG back-edges
 - [x] **AnalysisPass interface + AnalysisPipeline** — 6 passes, `category: PassCategory`, `context.addFinding()`, `PipelineRunResult { results, findings }`
@@ -46,13 +46,13 @@ Passes that need only `ast` and/or `cfg` — no new graph required.
 - [x] **#35 `missing-public-doc`** (—, note) — exported function/type with no doc block
 - [x] **#36 `todo-in-prod`** (—, note) — TODO/FIXME/HACK in non-test file
 
-### Group 2: 5 reliability passes (dfg + cfg, ~950 LOC)
+### Group 2: 5 reliability + performance passes ✅ Done (v3.9.2)
 
-- [ ] **#20 `null-deref`** (CWE-476, error) — nullable source → dereference, no null guard on all CFG paths
-- [ ] **#21 `resource-leak`** (CWE-772, error) — resource opened, not closed on exception exit path
-- [ ] **#28 `unchecked-return`** (CWE-252, warning) — return value ignored; majority of callers check it
-- [ ] **#48 `sync-io-async`** (CWE-1050, warning) — blocking I/O inside async function
-- [ ] **#50 `string-concat-loop`** (CWE-1046, warning) — `string +=` inside `loopBodies()`
+- [x] **#20 `null-deref`** (CWE-476, error) — nullable source → dereference, no null guard on all CFG paths
+- [x] **#21 `resource-leak`** (CWE-772, error) — resource opened, not closed on exception exit path
+- [x] **#28 `unchecked-return`** (CWE-252, warning) — return value ignored; majority of callers check it
+- [x] **#48 `sync-io-async`** (CWE-1050, warning) — blocking I/O inside async function
+- [x] **#50 `string-concat-loop`** (CWE-1046, warning) — `string +=` inside `loopBodies()`
 
 ### Group 3: Scope graph + 3 passes (~200 LOC graph + ~550 LOC passes)
 
