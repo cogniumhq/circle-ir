@@ -10,18 +10,37 @@ This file tracks pending improvements and known issues for the circle-ir core li
 
 ---
 
+## Architecture
+
+### Completed
+
+- [x] **CodeGraph abstraction** (`src/graph/code-graph.ts`) — lazy Map indexes built once per analysis; eliminates duplicate index-building that previously existed independently in `taint-propagation.ts`, `dfg-verifier.ts`, `path-finder.ts`, `interprocedural.ts`. O(N) scan in `interprocedural.ts` hot loop replaced with `graph.usesAtLine()`.
+- [x] **AnalysisPass interface + AnalysisPipeline** (`src/graph/analysis-pass.ts`) — 6 sequential typed passes; `analyzer.ts` reduced from ~2100 to ~610 lines. Passes: `TaintMatcherPass`, `ConstantPropagationPass`, `LanguageSourcesPass`, `SinkFilterPass`, `TaintPropagationPass`, `InterproceduralPass`.
+- [x] **Cross-file analysis wired** (`src/graph/project-graph.ts`, `src/analysis/passes/cross-file-pass.ts`) — `ProjectGraph` wraps multiple `CodeGraph` instances with lazy `SymbolTable`, `TypeHierarchyResolver`, `CrossFileResolver`. `analyzeProject()` public API returns `ProjectAnalysis` with type hierarchy, cross-file calls, and taint paths.
+
+### Pending
+
+- [ ] **P2**: TypeHierarchy integration into taint matching (Phase 4) — pass `TypeHierarchyResolver` to `TaintMatcherPass` for Java; `PreparedStatement.execute()` correctly matched as subtype of `Statement.execute()` without duplicating sink configs. See `src/resolution/type-hierarchy.ts` (`couldBeType()`).
+- [ ] **P2**: Pass-level unit tests (`tests/analysis/passes/*.test.ts`) — each of the 6 passes is independently testable with a minimal `PassContext`; currently only exercised end-to-end via `analyzer.test.ts`.
+
+---
+
 ## Test Coverage Improvements
 
-Current overall coverage: ~80%. Target: ≥75% (met).
+Current overall coverage: ~77%. Target: ≥75% (met).
+`src/resolution/**` is excluded from coverage metrics — it is exercised by integration tests in `tests/analysis/project-graph.test.ts`.
 
 | File | Coverage | Priority | Notes |
 |------|----------|----------|-------|
 | `src/languages/plugins/bash.ts` | ~60% | P2 | Bash language plugin |
+| `src/languages/plugins/python.ts` | ~13% | P2 | Python plugin; most paths reachable only with real Python IR |
+| `src/languages/plugins/rust.ts` | ~13% | P3 | Rust plugin; low usage |
 
 ### Test Tasks
 
 - [ ] **P2**: Add tests for Bash plugin edge cases (command substitution, here-docs)
 - [ ] **P2**: Add tests for `dfg.ts` inter-procedural data flow
+- [ ] **P2**: Add pass-level unit tests for the 6 AnalysisPass implementations
 
 ---
 
@@ -121,4 +140,4 @@ Before any release:
 
 ---
 
-*Last updated: 2026-03-24*
+*Last updated: 2026-03-25*

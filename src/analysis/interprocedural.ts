@@ -20,6 +20,7 @@ import type {
   SourceType,
   SinkType,
 } from '../types/index.js';
+import { CodeGraph } from '../graph/index.js';
 
 /**
  * Represents a method in the call graph.
@@ -84,16 +85,52 @@ export interface InterproceduralOptions {
 
 /**
  * Perform inter-procedural taint analysis.
+ *
+ * Accepts either a CodeGraph (preferred) or the legacy (types, calls, dfg, ...)
+ * signature for backward compatibility.
  */
 export function analyzeInterprocedural(
-  types: TypeInfo[],
-  calls: CallInfo[],
-  dfg: DFG,
-  sources: TaintSource[],
-  sinks: TaintSink[],
-  sanitizers: TaintSanitizer[],
-  options: InterproceduralOptions = {}
+  graphOrTypes: CodeGraph | TypeInfo[],
+  callsOrSources: CallInfo[] | TaintSource[],
+  dfgOrSinks: DFG | TaintSink[],
+  sourcesOrSanitizers: TaintSource[] | TaintSanitizer[],
+  sinksOrOptions?: TaintSink[] | InterproceduralOptions,
+  sanitizersArg?: TaintSanitizer[],
+  optionsArg: InterproceduralOptions = {}
 ): InterproceduralResult {
+  let graph: CodeGraph;
+  let sources: TaintSource[];
+  let sinks: TaintSink[];
+  let sanitizers: TaintSanitizer[];
+  let options: InterproceduralOptions;
+
+  if (graphOrTypes instanceof CodeGraph) {
+    // New signature: (graph, sources, sinks, sanitizers, options?)
+    graph = graphOrTypes;
+    sources = callsOrSources as TaintSource[];
+    sinks = dfgOrSinks as TaintSink[];
+    sanitizers = sourcesOrSanitizers as TaintSanitizer[];
+    options = (sinksOrOptions as InterproceduralOptions | undefined) ?? {};
+  } else {
+    // Legacy: (types, calls, dfg, sources, sinks, sanitizers, options?)
+    const types = graphOrTypes as TypeInfo[];
+    const calls = callsOrSources as CallInfo[];
+    const dfg = dfgOrSinks as DFG;
+    sources = sourcesOrSanitizers as TaintSource[];
+    sinks = sinksOrOptions as TaintSink[] ?? [];
+    sanitizers = sanitizersArg ?? [];
+    options = optionsArg;
+    graph = new CodeGraph({
+      meta: { circle_ir: '3.0', file: '', language: 'java', loc: 0, hash: '' },
+      types, calls, cfg: { blocks: [], edges: [] }, dfg,
+      taint: { sources: [], sinks: [], sanitizers },
+      imports: [], exports: [], unresolved: [], enriched: {},
+    });
+  }
+
+  const types = graph.ir.types;
+  const calls = graph.ir.calls;
+
   // Build method nodes from type information
   const methodNodes = buildMethodNodes(types);
 
@@ -113,8 +150,14 @@ export function analyzeInterprocedural(
     }
   }
 
-  // Build taint map from DFG
-  const taintedDefIds = buildTaintedDefIds(dfg, sources);
+  // Build taint map from DFG via CodeGraph (eliminates O(N) scan per source)
+  const seedIds = new Set<number>();
+  for (const source of sources) {
+    for (const def of graph.defsAtLine(source.line)) {
+      seedIds.add(def.id);
+    }
+  }
+  const taintedDefIds = graph.propagateTaintedDefIds(seedIds);
 
   // Get tainted variables from constant propagation (tracks collections with tainted elements)
   const taintedVarsFromCP = options.taintedVariables ?? new Set<string>();
@@ -176,8 +219,8 @@ export function analyzeInterprocedural(
     const taintedArgVars: string[] = [];
     for (const arg of call.arguments) {
       if (arg.variable) {
-        // Check 1: DFG-based taint tracking
-        const use = findUseAtLine(dfg, arg.variable, call.location.line);
+        // Check 1: DFG-based taint tracking (indexed lookup, no O(N) scan)
+        const use = graph.usesAtLine(call.location.line).find(u => u.variable === arg.variable) ?? null;
         const isTaintedByDFG = use && use.def_id !== null && taintedDefIds.has(use.def_id);
 
         // Check 2: Constant propagation taint tracking (for collections with tainted elements)
@@ -250,7 +293,7 @@ export function analyzeInterprocedural(
   }
 
   // Propagate taint through return values
-  propagateReturnTaint(types, dfg, taintedDefIds, taintedReturns, taintedMethods, methodNodes);
+  propagateReturnTaint(types, graph, taintedDefIds, taintedReturns, taintedMethods, methodNodes);
 
   // Iteratively propagate taint through call chains
   propagateThroughCallChains(
@@ -258,7 +301,7 @@ export function analyzeInterprocedural(
     methodNodes,
     taintedMethods,
     taintedReturns,
-    dfg,
+    graph,
     taintedDefIds
   );
 
@@ -435,52 +478,6 @@ function buildCallEdges(
 }
 
 /**
- * Build set of tainted definition IDs from sources.
- */
-function buildTaintedDefIds(dfg: DFG, sources: TaintSource[]): Set<number> {
-  const taintedDefIds = new Set<number>();
-
-  // Find definitions on source lines
-  // Only mark defs on the EXACT source line as tainted
-  // (The previous +1 heuristic incorrectly marked unrelated defs as tainted)
-  for (const source of sources) {
-    for (const def of dfg.defs) {
-      if (def.line === source.line) {
-        taintedDefIds.add(def.id);
-      }
-    }
-  }
-
-  // Propagate through chains
-  if (dfg.chains) {
-    let changed = true;
-    while (changed) {
-      changed = false;
-      for (const chain of dfg.chains) {
-        if (taintedDefIds.has(chain.from_def) && !taintedDefIds.has(chain.to_def)) {
-          taintedDefIds.add(chain.to_def);
-          changed = true;
-        }
-      }
-    }
-  }
-
-  return taintedDefIds;
-}
-
-/**
- * Find a use at a specific line.
- */
-function findUseAtLine(dfg: DFG, variable: string, line: number): DFGUse | null {
-  for (const use of dfg.uses) {
-    if (use.variable === variable && use.line === line) {
-      return use;
-    }
-  }
-  return null;
-}
-
-/**
  * Result of finding a method at a line, includes context.
  */
 interface MethodContext {
@@ -516,14 +513,14 @@ function findMethodAtLine(types: TypeInfo[], line: number): MethodContext | null
  */
 function propagateReturnTaint(
   types: TypeInfo[],
-  dfg: DFG,
+  graph: CodeGraph,
   taintedDefIds: Set<number>,
   taintedReturns: Map<string, string>,
   taintedMethods: Set<string>,
   methodNodes: MethodNodeMaps
 ): void {
   // Find return statements that return tainted values
-  const returnDefs = dfg.defs.filter(d => d.kind === 'return');
+  const returnDefs = graph.ir.dfg.defs.filter(d => d.kind === 'return');
 
   for (const returnDef of returnDefs) {
     // Find the method this return is in
@@ -532,8 +529,8 @@ function propagateReturnTaint(
 
     const fqn = buildMethodFQN(methodCtx.packageName, methodCtx.className, methodCtx.methodName);
 
-    // Find uses on the same line (the returned value)
-    const usesOnLine = dfg.uses.filter(u => u.line === returnDef.line);
+    // Find uses on the same line (the returned value) — indexed lookup
+    const usesOnLine = graph.usesAtLine(returnDef.line);
 
     for (const use of usesOnLine) {
       if (use.def_id !== null && taintedDefIds.has(use.def_id)) {
@@ -569,7 +566,7 @@ function propagateThroughCallChains(
   methodNodes: MethodNodeMaps,
   taintedMethods: Set<string>,
   taintedReturns: Map<string, string>,
-  dfg: DFG,
+  graph: CodeGraph,
   taintedDefIds: Set<number>
 ): void {
   // Build reverse call graph (callee -> callers)
@@ -596,9 +593,9 @@ function propagateThroughCallChains(
 
       for (const edge of callers) {
         // The call site now produces tainted data
-        // Find definitions at the call line (the variable receiving the return value)
-        for (const def of dfg.defs) {
-          if (def.line === edge.callLine && !taintedDefIds.has(def.id)) {
+        // Use indexed lookup instead of O(N) scan through all defs
+        for (const def of graph.defsAtLine(edge.callLine)) {
+          if (!taintedDefIds.has(def.id)) {
             taintedDefIds.add(def.id);
             changed = true;
 
@@ -611,10 +608,11 @@ function propagateThroughCallChains(
       }
     }
 
-    // Propagate through chains again
-    if (dfg.chains) {
-      for (const chain of dfg.chains) {
-        if (taintedDefIds.has(chain.from_def) && !taintedDefIds.has(chain.to_def)) {
+    // Propagate through chains using indexed adjacency list
+    for (const [fromDef, chains] of graph.chainsByFromDef) {
+      if (!taintedDefIds.has(fromDef)) continue;
+      for (const chain of chains) {
+        if (!taintedDefIds.has(chain.to_def)) {
           taintedDefIds.add(chain.to_def);
           changed = true;
         }

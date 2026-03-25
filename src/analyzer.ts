@@ -3,11 +3,18 @@
  *
  * Main entry point for analyzing source code and producing Circle-IR output.
  * This is the core static analyzer. LLM-based verification and discovery are out of scope for this library.
+ *
+ * The analysis pipeline runs six sequential passes over a shared CodeGraph:
+ *   1. TaintMatcherPass        — config-based source/sink extraction
+ *   2. ConstantPropagationPass — dead-code detection, symbol table, field taint
+ *   3. LanguageSourcesPass     — language-specific sources/sinks (JS, Python, getters)
+ *   4. SinkFilterPass          — four-stage false-positive elimination
+ *   5. TaintPropagationPass    — DFG-based flow verification
+ *   6. InterproceduralPass     — cross-method taint propagation
  */
 
-import type { CircleIR, AnalysisResponse, Vulnerability, Enriched, TaintSource, TypeInfo, SourceType, SinkType } from './types/index.js';
+import type { CircleIR, AnalysisResponse, Vulnerability, Enriched, ProjectAnalysis, ProjectMeta } from './types/index.js';
 import type { TaintConfig } from './types/config.js';
-import type { FieldTaintInfo } from './analysis/constant-propagation/types.js';
 import {
   initParser,
   parse,
@@ -21,621 +28,36 @@ import {
   collectAllNodes,
   type SupportedLanguage,
 } from './core/index.js';
-import { analyzeTaint, getDefaultConfig, detectUnresolved, propagateTaint, analyzeInterprocedural, findTaintBridges, analyzeConstantPropagation, isFalsePositive, isCorrelatedPredicateFP } from './analysis/index.js';
-import { registerBuiltinPlugins, getLanguagePlugin } from './languages/index.js';
+import {
+  analyzeTaint,
+  getDefaultConfig,
+  detectUnresolved,
+  analyzeConstantPropagation,
+  isFalsePositive,
+} from './analysis/index.js';
+import { registerBuiltinPlugins } from './languages/index.js';
 import { logger } from './utils/logger.js';
-
-/**
- * Find getter methods that return tainted fields from constructor assignments.
- * This enables detection of taint through: constructor param → field → getter return.
- */
-function findGetterSources(
-  types: TypeInfo[],
-  instanceFieldTaint: Map<string, FieldTaintInfo>,
-  sourceCode: string
-): TaintSource[] {
-  const sources: TaintSource[] = [];
-
-  if (instanceFieldTaint.size === 0) {
-    return sources;
-  }
-
-  // Iterate through all classes and methods
-  for (const type of types) {
-    for (const method of type.methods) {
-      // Look for getter pattern: getXxx() returning a field
-      const methodName = method.name;
-
-      // Check for getter naming convention: getXxx, isXxx, or just xxx
-      let potentialFieldName: string | null = null;
-      if (methodName.startsWith('get') && methodName.length > 3) {
-        // getField -> field (lowercase first letter)
-        potentialFieldName = methodName.charAt(3).toLowerCase() + methodName.substring(4);
-      } else if (methodName.startsWith('is') && methodName.length > 2) {
-        // isField -> field
-        potentialFieldName = methodName.charAt(2).toLowerCase() + methodName.substring(3);
-      }
-
-      // Check if the method body returns a tainted field
-      // Simple check: method has no parameters and returns a field that's tracked as tainted
-      if (method.parameters.length === 0) {
-        // Check both the potential field name from naming convention and exact match
-        const fieldsToCheck = potentialFieldName
-          ? [potentialFieldName, methodName]
-          : [methodName];
-
-        for (const fieldName of fieldsToCheck) {
-          const fieldTaint = instanceFieldTaint.get(fieldName);
-          if (fieldTaint && fieldTaint.className === type.name) {
-            sources.push({
-              type: 'constructor_field',
-              location: `${type.name}.${methodName}() returns tainted field '${fieldName}' (from constructor param '${fieldTaint.sourceParam}')`,
-              severity: 'high',
-              line: method.start_line,
-              confidence: 0.95,
-            });
-            break; // Found a match, no need to check more fields
-          }
-        }
-      }
-
-      // Also check for direct field name match (e.g., method name() returns this.name)
-      for (const [fieldName, fieldTaint] of instanceFieldTaint) {
-        if (fieldTaint.className === type.name) {
-          // Check if method name matches field name directly (common pattern)
-          if (methodName === fieldName && method.parameters.length === 0) {
-            // Avoid duplicates
-            const alreadyAdded = sources.some(
-              s => s.location.includes(`${type.name}.${methodName}()`)
-            );
-            if (!alreadyAdded) {
-              sources.push({
-                type: 'constructor_field',
-                location: `${type.name}.${methodName}() returns tainted field '${fieldName}' (from constructor param '${fieldTaint.sourceParam}')`,
-                severity: 'high',
-                line: method.start_line,
-                confidence: 0.95,
-              });
-            }
-          }
-        }
-      }
-    }
-  }
-
-  return sources;
-}
-
-/**
- * DOM XSS sink property patterns.
- * Used to detect sinks in property assignments like: element.innerHTML = value
- */
-const JS_DOM_XSS_SINKS = [
-  { pattern: /\.innerHTML\s*=/, type: 'xss' as const, cwe: 'CWE-79', severity: 'critical' as const },
-  { pattern: /\.outerHTML\s*=/, type: 'xss' as const, cwe: 'CWE-79', severity: 'critical' as const },
-  { pattern: /document\.write\s*\(/, type: 'xss' as const, cwe: 'CWE-79', severity: 'critical' as const },
-  { pattern: /document\.writeln\s*\(/, type: 'xss' as const, cwe: 'CWE-79', severity: 'critical' as const },
-  { pattern: /\.insertAdjacentHTML\s*\(/, type: 'xss' as const, cwe: 'CWE-79', severity: 'critical' as const },
-  { pattern: /\.src\s*=/, type: 'xss' as const, cwe: 'CWE-79', severity: 'high' as const },
-  { pattern: /\.href\s*=/, type: 'xss' as const, cwe: 'CWE-79', severity: 'high' as const },
-];
-
-/**
- * Tainted JavaScript property access patterns.
- * Used to detect sources in variable assignments like: var x = req.query.id
- */
-const JS_TAINTED_PATTERNS = [
-  { pattern: /\breq\.query\b/, type: 'http_param' as const },
-  { pattern: /\breq\.params\b/, type: 'http_param' as const },
-  { pattern: /\breq\.body\b/, type: 'http_body' as const },
-  { pattern: /\breq\.headers\b/, type: 'http_header' as const },
-  { pattern: /\breq\.cookies\b/, type: 'http_cookie' as const },
-  { pattern: /\breq\.url\b/, type: 'http_path' as const },
-  { pattern: /\breq\.path\b/, type: 'http_path' as const },
-  { pattern: /\breq\.originalUrl\b/, type: 'http_path' as const },
-  { pattern: /\breq\.files?\b/, type: 'file_input' as const },
-  { pattern: /\brequest\.query\b/, type: 'http_param' as const },
-  { pattern: /\brequest\.params\b/, type: 'http_param' as const },
-  { pattern: /\brequest\.body\b/, type: 'http_body' as const },
-  { pattern: /\brequest\.headers\b/, type: 'http_header' as const },
-  { pattern: /\bctx\.query\b/, type: 'http_param' as const },
-  { pattern: /\bctx\.params\b/, type: 'http_param' as const },
-  { pattern: /\bctx\.request\b/, type: 'http_body' as const },
-  { pattern: /\bprocess\.env\b/, type: 'env_input' as const },
-  { pattern: /\bprocess\.argv\b/, type: 'io_input' as const },
-  { pattern: /\blocation\.search\b/, type: 'http_param' as const },
-  { pattern: /\blocation\.hash\b/, type: 'http_param' as const },
-  { pattern: /\blocation\.href\b/, type: 'http_path' as const },
-  { pattern: /\bdocument\.getElementById\b/, type: 'dom_input' as const },
-  { pattern: /\bdocument\.querySelector\b/, type: 'dom_input' as const },
-  { pattern: /\.value\b/, type: 'dom_input' as const },
-];
-
-/**
- * Python/Flask/Django tainted request access patterns.
- * Used to detect sources in assignments like: user_id = request.args.get('id')
- * Also covers subscript access: user_id = request.args['id']
- */
-const PYTHON_TAINTED_PATTERNS = [
-  { pattern: /\brequest\.args\b/,              type: 'http_param'  as const },
-  { pattern: /\brequest\.form\b/,              type: 'http_body'   as const },
-  { pattern: /\brequest\.json\b/,              type: 'http_body'   as const },
-  { pattern: /\brequest\.data\b/,              type: 'http_body'   as const },
-  { pattern: /\brequest\.files?\b/,            type: 'file_input'  as const },
-  { pattern: /\brequest\.headers?\b/,          type: 'http_header' as const },
-  { pattern: /\brequest\.cookies\b/,           type: 'http_cookie' as const },
-  { pattern: /\brequest\.GET\b/,               type: 'http_param'  as const },
-  { pattern: /\brequest\.POST\b/,              type: 'http_body'   as const },
-  { pattern: /\brequest\.META\b/,              type: 'http_header' as const },
-  { pattern: /\brequest\.FILES\b/,             type: 'file_input'  as const },
-  { pattern: /\brequest\.query_params\b/,      type: 'http_param'  as const },
-  { pattern: /\brequest\.path_params\b/,       type: 'http_param'  as const },
-  // Flask raw query/body strings
-  { pattern: /\brequest\.query_string\b/,      type: 'http_param'  as const },
-  { pattern: /\brequest\.get_data\s*\(/,       type: 'http_body'   as const },
-  // Request wrapper helper methods (common in OWASP-style benchmarks and real wrappers)
-  { pattern: /\bget_form_parameter\s*\(/,      type: 'http_body'   as const },
-  { pattern: /\bget_query_parameter\s*\(/,     type: 'http_param'  as const },
-  { pattern: /\bget_header_value\s*\(/,        type: 'http_header' as const },
-  { pattern: /\bget_cookie_value\s*\(/,        type: 'http_cookie' as const },
-];
-
-/**
- * Find JavaScript taint sources from variable assignments.
- * Detects patterns like: var userId = req.query.id
- */
-function findJavaScriptAssignmentSources(
-  sourceCode: string,
-  language: string
-): TaintSource[] {
-  const sources: TaintSource[] = [];
-
-  // Only apply to JavaScript/TypeScript
-  if (!['javascript', 'typescript'].includes(language)) {
-    return sources;
-  }
-
-  const lines = sourceCode.split('\n');
-
-  for (let lineNum = 0; lineNum < lines.length; lineNum++) {
-    const line = lines[lineNum];
-    const lineNumber = lineNum + 1;
-
-    // Look for variable assignments: var/let/const x = ...
-    // or simple assignments: x = ...
-    const assignmentMatch = line.match(/(?:(?:var|let|const)\s+)?(\w+)\s*=\s*(.+)/);
-    if (assignmentMatch) {
-      const varName = assignmentMatch[1];
-      const rhs = assignmentMatch[2];
-
-      // Check if RHS contains a tainted pattern
-      for (const { pattern, type } of JS_TAINTED_PATTERNS) {
-        if (pattern.test(rhs)) {
-          // Don't add duplicates
-          const alreadyExists = sources.some(
-            s => s.line === lineNumber && s.type === type
-          );
-          if (!alreadyExists) {
-            sources.push({
-              type,
-              location: `${varName} = ${rhs.trim().substring(0, 50)}${rhs.length > 50 ? '...' : ''}`,
-              severity: 'high',
-              line: lineNumber,
-              confidence: 1.0,
-              variable: varName,
-            });
-          }
-          break; // Found a match, no need to check more patterns
-        }
-      }
-    }
-  }
-
-  return sources;
-}
-
-/**
- * Find Python taint sources from variable assignments and subscript access.
- * Detects patterns like: user_id = request.args.get('id') or request.args['id']
- */
-function findPythonAssignmentSources(
-  sourceCode: string,
-  language: string
-): TaintSource[] {
-  const sources: TaintSource[] = [];
-
-  if (language !== 'python') {
-    return sources;
-  }
-
-  const lines = sourceCode.split('\n');
-
-  for (let lineNum = 0; lineNum < lines.length; lineNum++) {
-    const line = lines[lineNum];
-    const lineNumber = lineNum + 1;
-
-    // Skip comment lines
-    if (line.trimStart().startsWith('#')) continue;
-
-    // Look for assignments: x = ... or x: type = ...
-    const assignmentMatch = line.match(/^(\s*\w[\w.]*)\s*(?::\s*\w[\w\[\], .]*)?\s*=\s*(.+)/);
-    if (assignmentMatch) {
-      const rhs = assignmentMatch[2];
-      for (const { pattern, type } of PYTHON_TAINTED_PATTERNS) {
-        if (pattern.test(rhs)) {
-          const varMatch = line.match(/^\s*(\w+)\s*/);
-          const varName = varMatch ? varMatch[1] : 'unknown';
-          const alreadyExists = sources.some(
-            s => s.line === lineNumber && s.type === type
-          );
-          if (!alreadyExists) {
-            sources.push({
-              type,
-              location: `${varName} = ${rhs.trim().substring(0, 50)}${rhs.length > 50 ? '...' : ''}`,
-              severity: 'high',
-              line: lineNumber,
-              confidence: 0.95,
-              variable: varName,
-            });
-          }
-          break;
-        }
-      }
-    }
-  }
-
-  return sources;
-}
-
-/**
- * Build a map of tainted variable names → source line via simple forward
- * line-by-line taint propagation for Python.
- *
- * Seeds from PYTHON_TAINTED_PATTERNS; propagates through assignments where the
- * RHS contains a tainted variable. Uses per-key container taint to distinguish
- * map['tainted_key'] from map['safe_key'] and conf.get(s,tainted_k) vs conf.get(s,safe_k).
- */
-function buildPythonTaintedVars(sourceCode: string): Map<string, number> {
-  const tainted = new Map<string, number>();
-  // Per-key container taint: "map['key']" or "conf['section']['key']" → line number
-  const containerTainted = new Map<string, number>();
-  const lines = sourceCode.split('\n');
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (line.trimStart().startsWith('#')) continue;
-
-    // Subscript assignment: container['key'] = value
-    // Tracks taint per-key so map['keyA']='safe' and map['keyB']=param are distinguished.
-    const subscriptAssign = line.match(/^\s*(\w+)\[(['"])([^'"]+)\2\]\s*=\s*(.+)$/);
-    if (subscriptAssign) {
-      const [, container, , key, rhs2] = subscriptAssign;
-      const isTaintedRhs = [...tainted.keys()].some(v => new RegExp(`\\b${v}\\b`).test(rhs2));
-      if (isTaintedRhs) {
-        containerTainted.set(`${container}['${key}']`, i + 1);
-      }
-      continue; // subscript assignments don't match simple variable regex below
-    }
-
-    // ConfigParser set: obj.set('section', 'key', value)
-    // Tracks per (section, key) so conf.get('s','keyA') and conf.get('s','keyB') are distinct.
-    const setCallMatch = line.match(/^\s*(\w+)\.set\s*\(\s*(['"])([^'"]+)\2\s*,\s*(['"])([^'"]+)\4\s*,\s*(.+?)\s*\)$/);
-    if (setCallMatch) {
-      const [, obj, , section, , key, rhs2] = setCallMatch;
-      const isTaintedRhs = [...tainted.keys()].some(v => new RegExp(`\\b${v}\\b`).test(rhs2));
-      if (isTaintedRhs) {
-        containerTainted.set(`${obj}['${section}']['${key}']`, i + 1);
-      }
-      continue;
-    }
-
-    // Augmented assignment: var += expr — taint if either side is tainted
-    const augAssign = line.match(/^\s*(\w+)\s*\+=\s*(.+)$/);
-    if (augAssign) {
-      const [, augLhs, augRhs] = augAssign;
-      const rhsTainted = [...tainted.keys()].some(v => new RegExp(`\\b${v}\\b`).test(augRhs));
-      if (rhsTainted || tainted.has(augLhs)) {
-        tainted.set(augLhs, tainted.get(augLhs) ?? (i + 1));
-      }
-      continue;
-    }
-
-    // For loop: for var in tainted_source — seed loop variable as tainted
-    const forLoopMatch = line.match(/^\s*for\s+(\w+)\s+in\s+(.+?)(?:\s*:\s*)?$/);
-    if (forLoopMatch) {
-      const [, iterVar, iterExpr] = forLoopMatch;
-      const isDirectSource = PYTHON_TAINTED_PATTERNS.some(p => p.pattern.test(iterExpr));
-      const isPropagated = [...tainted.keys()].some(v => new RegExp(`\\b${v}\\b`).test(iterExpr));
-      if (isDirectSource || isPropagated) {
-        tainted.set(iterVar, i + 1);
-      }
-      continue;
-    }
-
-    // Regular assignment: var = expr
-    const assignMatch = line.match(/^\s*(\w+)\s*=\s*(.+)$/);
-    if (!assignMatch) continue;
-    const [, lhs, rhs] = assignMatch;
-
-    const isDirectSource = PYTHON_TAINTED_PATTERNS.some(p => p.pattern.test(rhs));
-
-    let propagatedFrom: string | undefined;
-
-    // Per-key dict access: bar = container['key']
-    const dictAccessMatch = rhs.trim().match(/^(\w+)\[(['"])([^'"]+)\2\]$/);
-    if (dictAccessMatch) {
-      const [, container, , key] = dictAccessMatch;
-      if (containerTainted.has(`${container}['${key}']`)) {
-        propagatedFrom = `${container}['${key}']`;
-      }
-    }
-
-    // Per-key configparser get: bar = conf.get('section', 'key')
-    if (!propagatedFrom) {
-      const confGetMatch = rhs.trim().match(/^(\w+)\.get\s*\(\s*(['"])([^'"]+)\2\s*,\s*(['"])([^'"]+)\4\s*\)$/);
-      if (confGetMatch) {
-        const [, obj, , section, , key] = confGetMatch;
-        if (containerTainted.has(`${obj}['${section}']['${key}']`)) {
-          propagatedFrom = `${obj}['${section}']['${key}']`;
-        }
-      }
-    }
-
-    // Standard variable propagation (skip os.environ/os.getenv — safe env reads)
-    if (!propagatedFrom) {
-      const isSafeEnvRead = /\bos\.environ\.get\s*\(/.test(rhs) || /\bos\.getenv\s*\(/.test(rhs);
-      if (!isSafeEnvRead) {
-        propagatedFrom = [...tainted.keys()].find(v => new RegExp(`\\b${v}\\b`).test(rhs));
-      }
-    }
-
-    if (isDirectSource) {
-      tainted.set(lhs, i + 1);
-    } else if (propagatedFrom !== undefined) {
-      tainted.set(lhs, i + 1);
-    } else if (tainted.has(lhs)) {
-      // Variable overwritten — preserve taint for null-guard patterns like:
-      //   if not param:
-      //       param = ""
-      const prevNonBlank = lines.slice(0, i).reverse().find(l => l.trim() && !l.trimStart().startsWith('#'));
-      const isNullGuard = prevNonBlank !== undefined && (
-        new RegExp(`^\\s*if\\s+not\\s+${lhs}\\s*:`).test(prevNonBlank) ||
-        new RegExp(`^\\s*if\\s+${lhs}\\s+is\\s+None\\s*:`).test(prevNonBlank)
-      );
-      if (!isNullGuard) {
-        tainted.delete(lhs);
-      }
-    }
-  }
-
-  return tainted;
-}
-
-/**
- * Forward taint propagation for JavaScript/TypeScript.
- * Tracks which local variables are tainted from HTTP request sources.
- * Used to filter spurious XSS sinks where the argument is NOT actually tainted
- * (e.g., res.send(stdout) where stdout is a callback param from exec(), not user input).
- */
-function buildJavaScriptTaintedVars(sourceCode: string, language: string): Map<string, number> {
-  if (!['javascript', 'typescript'].includes(language)) return new Map();
-  const tainted = new Map<string, number>();
-  const lines = sourceCode.split('\n');
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    // Skip comment lines
-    const trimmed = line.trimStart();
-    if (trimmed.startsWith('//') || trimmed.startsWith('*')) continue;
-
-    // Match variable assignments: var/let/const x = rhs  OR  x = rhs
-    const assignMatch = line.match(/(?:(?:var|let|const)\s+)?(\w+)\s*=\s*(.+)/);
-    if (!assignMatch) continue;
-    const [, lhs, rhs] = assignMatch;
-
-    // Skip keywords that look like assignments but aren't variable names
-    if (['if', 'while', 'for', 'return', 'true', 'false', 'null', 'undefined', 'case'].includes(lhs)) continue;
-
-    // Seed from direct source patterns (req.query.x, req.body, etc.)
-    const isDirectSource = JS_TAINTED_PATTERNS.some(p => p.pattern.test(rhs));
-
-    // Propagate from existing tainted variables
-    const isTaintedPropagation = tainted.size > 0 &&
-      [...tainted.keys()].some(v => new RegExp(`\\b${v}\\b`).test(rhs));
-
-    if (isDirectSource || isTaintedPropagation) {
-      tainted.set(lhs, i + 1);
-    }
-  }
-
-  return tainted;
-}
-
-/**
- * Detect Python apostrophe-check sanitizer guards, e.g.:
- *   if "'" in bar:
- *       return  # or raise / abort
- * Returns the set of variable names that are guarded this way.
- */
-function findPythonQuoteSanitizedVars(sourceCode: string): Set<string> {
-  const sanitized = new Set<string>();
-  const lines = sourceCode.split('\n');
-
-  for (let i = 0; i < lines.length - 1; i++) {
-    // Match any apostrophe/quote check: if "'" in var:, if '\'' in var:, if '"' in var:
-    // Uses full quoted-string pattern to handle Python's various literal forms.
-    const m = lines[i].match(/^\s*if\s+(?:'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")\s+in\s+(\w+)\s*:/);
-    if (!m) continue;
-    // Look ahead up to 5 lines for a return/raise/abort/continue/break
-    // The guard body may be multi-line (e.g. RESPONSE += (...) \n return).
-    // Stop early if we encounter a line at the same or lesser indentation as the if (block exit).
-    const ifIndent = (lines[i].match(/^(\s*)/) ?? ['', ''])[1].length;
-    let foundExit = false;
-    for (let j = i + 1; j <= Math.min(i + 5, lines.length - 1); j++) {
-      const jLine = lines[j] ?? '';
-      if (!jLine.trim()) continue; // skip blank lines
-      const jIndent = (jLine.match(/^(\s*)/) ?? ['', ''])[1].length;
-      if (jIndent <= ifIndent) break; // left the if-block
-      if (/^(return|raise|abort|continue|break)\b/.test(jLine.trim())) {
-        foundExit = true;
-        break;
-      }
-    }
-    if (foundExit) {
-      sanitized.add(m[1]);
-    }
-  }
-
-  return sanitized;
-}
-
-/**
- * Detect Python trust boundary violations:
- *   flask.session[key] = value  (or session[key] = value)
- * where key or value references a tainted variable.
- */
-function findPythonTrustBoundaryViolations(
-  sourceCode: string,
-  language: string,
-  taintedVars: Map<string, number>
-): Array<{ sourceLine: number; sinkLine: number }> {
-  if (language !== 'python' || taintedVars.size === 0) return [];
-
-  const violations: Array<{ sourceLine: number; sinkLine: number }> = [];
-  const lines = sourceCode.split('\n');
-  const SESSION_WRITE = /(?:flask\.)?session\[([^\]]+)\]\s*=\s*(.+)$/;
-
-  const taintedKeys = [...taintedVars.keys()];
-  const earliestSourceLine = Math.min(...[...taintedVars.values()]);
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (line.trimStart().startsWith('#')) continue;
-    const m = line.match(SESSION_WRITE);
-    if (!m) continue;
-    const [, keyExpr, valueExpr] = m;
-
-    const keyTainted  = taintedKeys.some(v => new RegExp(`\\b${v}\\b`).test(keyExpr));
-    const valueTainted = taintedKeys.some(v => new RegExp(`\\b${v}\\b`).test(valueExpr));
-
-    if (keyTainted || valueTainted) {
-      violations.push({ sourceLine: earliestSourceLine, sinkLine: i + 1 });
-    }
-  }
-
-  return violations;
-}
-
-/**
- * Find Python XSS sinks in return/yield statements.
- * Flask/Django routes often return HTML strings directly:
- *   return '<h1>' + user_input + '</h1>'
- *   return f'<html>{user_input}</html>'
- * These are not call nodes so findSinks() never detects them.
- */
-function findPythonReturnXSSSinks(
-  sourceCode: string,
-  language: string,
-  taintedVars: Map<string, number>
-): Array<{ sinkLine: number }> {
-  if (language !== 'python' || taintedVars.size === 0) return [];
-
-  const sinks: Array<{ sinkLine: number }> = [];
-  const lines = sourceCode.split('\n');
-  const taintedKeys = [...taintedVars.keys()];
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (line.trimStart().startsWith('#')) continue;
-
-    // Match return/yield statements with string content
-    const returnMatch = line.match(/^\s*(?:return|yield)\s+(.+)$/);
-    if (!returnMatch) continue;
-
-    const expr = returnMatch[1];
-
-    // Must contain a tainted variable
-    const hasTaintedVar = taintedKeys.some(v => new RegExp(`\\b${v}\\b`).test(expr));
-    if (!hasTaintedVar) continue;
-
-    // Must look like HTML (contains '<', or is a string concatenation, or f-string with HTML)
-    const looksLikeHTML = expr.includes('<') || /['"]\s*\+/.test(expr) || /\+\s*['"]/.test(expr) || /f['"][^'"]*\{/.test(expr);
-    if (!looksLikeHTML) continue;
-
-    sinks.push({ sinkLine: i + 1 });
-  }
-
-  return sinks;
-}
-
-/**
- * Find DOM XSS sinks from property assignments in JavaScript.
- * Detects patterns like: element.innerHTML = userInput
- */
-function findJavaScriptDOMSinks(
-  sourceCode: string,
-  language: string
-): Array<{
-  type: string;
-  cwe: string;
-  severity: string;
-  line: number;
-  location: string;
-  method?: string;
-}> {
-  const sinks: Array<{
-    type: string;
-    cwe: string;
-    severity: string;
-    line: number;
-    location: string;
-    method?: string;
-  }> = [];
-
-  // Only apply to JavaScript/TypeScript
-  if (!['javascript', 'typescript'].includes(language)) {
-    return sinks;
-  }
-
-  const lines = sourceCode.split('\n');
-
-  for (let lineNum = 0; lineNum < lines.length; lineNum++) {
-    const line = lines[lineNum];
-    const lineNumber = lineNum + 1;
-
-    // Check for DOM XSS sink patterns
-    for (const { pattern, type, cwe, severity } of JS_DOM_XSS_SINKS) {
-      if (pattern.test(line)) {
-        // Extract the method/property being assigned
-        let method = 'innerHTML';
-        if (line.includes('.outerHTML')) method = 'outerHTML';
-        else if (line.includes('document.write(')) method = 'document.write';
-        else if (line.includes('document.writeln(')) method = 'document.writeln';
-        else if (line.includes('.insertAdjacentHTML')) method = 'insertAdjacentHTML';
-        else if (line.includes('.src')) method = 'src';
-        else if (line.includes('.href')) method = 'href';
-
-        // Don't add duplicates
-        const alreadyExists = sinks.some(
-          s => s.line === lineNumber && s.cwe === cwe
-        );
-        if (!alreadyExists) {
-          sinks.push({
-            type,
-            cwe,
-            severity,
-            line: lineNumber,
-            location: line.trim().substring(0, 80),
-            method,
-          });
-        }
-        break;
-      }
-    }
-  }
-
-  return sinks;
-}
+import { CodeGraph, AnalysisPipeline, ProjectGraph } from './graph/index.js';
+import { CrossFilePass } from './analysis/passes/cross-file-pass.js';
+
+// Pass classes
+import { TaintMatcherPass } from './analysis/passes/taint-matcher-pass.js';
+import { ConstantPropagationPass } from './analysis/passes/constant-propagation-pass.js';
+import { LanguageSourcesPass } from './analysis/passes/language-sources-pass.js';
+import { SinkFilterPass, filterCleanVariableSinks, filterSanitizedSinks } from './analysis/passes/sink-filter-pass.js';
+import { TaintPropagationPass } from './analysis/passes/taint-propagation-pass.js';
+import { InterproceduralPass } from './analysis/passes/interprocedural-pass.js';
+
+// Helpers used by analyzeForAPI
+import {
+  buildPythonTaintedVars,
+  buildPythonSanitizedVars,
+  findPythonTrustBoundaryViolations,
+} from './analysis/passes/language-sources-pass.js';
+
+// Pass result types (used to read typed results from the pipeline map)
+import type { SinkFilterResult } from './analysis/passes/sink-filter-pass.js';
+import type { InterproceduralPassResult } from './analysis/passes/interprocedural-pass.js';
 
 export interface AnalyzerOptions {
   /**
@@ -753,6 +175,48 @@ function buildEnriched(
   };
 }
 
+// ---------------------------------------------------------------------------
+// Node type collection — shared by analyze() and analyzeForAPI()
+// ---------------------------------------------------------------------------
+
+function getNodeTypesForLanguage(language: SupportedLanguage): Set<string> {
+  switch (language) {
+    case 'rust':
+      return new Set([
+        'call_expression', 'macro_invocation', 'function_item', 'struct_item',
+        'impl_item', 'enum_item', 'trait_item', 'mod_item', 'use_declaration',
+        'let_declaration', 'field_expression', 'scoped_identifier',
+      ]);
+    case 'python':
+      return new Set([
+        'call', 'function_definition', 'class_definition', 'import_statement',
+        'import_from_statement', 'assignment', 'attribute', 'subscript',
+      ]);
+    case 'javascript':
+    case 'typescript':
+      return new Set([
+        'call_expression', 'new_expression', 'class_declaration', 'function_declaration',
+        'arrow_function', 'method_definition', 'variable_declaration', 'lexical_declaration',
+        'import_statement', 'export_statement', 'member_expression', 'assignment_expression',
+      ]);
+    case 'bash':
+      return new Set([
+        'command', 'function_definition', 'variable_assignment', 'declaration_command',
+        'if_statement', 'for_statement', 'c_style_for_statement', 'while_statement',
+      ]);
+    default:
+      return new Set([
+        'method_invocation', 'object_creation_expression', 'class_declaration',
+        'method_declaration', 'constructor_declaration', 'field_declaration',
+        'import_declaration', 'interface_declaration', 'enum_declaration',
+      ]);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Main analysis function
+// ---------------------------------------------------------------------------
+
 /**
  * Analyze source code and produce Circle-IR output.
  */
@@ -773,654 +237,65 @@ export async function analyze(
   logger.trace('Parsed AST', { rootNodeType: tree.rootNode.type });
 
   // Collect all node types in a single traversal for better performance
-  // Different languages have different AST node types
-  const isJavaScript = language === 'javascript' || language === 'typescript';
-  const isRust = language === 'rust';
-  const isPython = language === 'python';
-  let nodeTypesToCollect: Set<string>;
-  if (isRust) {
-    nodeTypesToCollect = new Set([
-      // Rust AST nodes
-      'call_expression',
-      'macro_invocation',
-      'function_item',
-      'struct_item',
-      'impl_item',
-      'enum_item',
-      'trait_item',
-      'mod_item',
-      'use_declaration',
-      'let_declaration',
-      'field_expression',
-      'scoped_identifier',
-    ]);
-  } else if (isPython) {
-    nodeTypesToCollect = new Set([
-      // Python AST nodes
-      'call',
-      'function_definition',
-      'class_definition',
-      'import_statement',
-      'import_from_statement',
-      'assignment',
-      'attribute',
-      'subscript',
-    ]);
-  } else if (isJavaScript) {
-    nodeTypesToCollect = new Set([
-      // JavaScript/TypeScript AST nodes
-      'call_expression',
-      'new_expression',
-      'class_declaration',
-      'function_declaration',
-      'arrow_function',
-      'method_definition',
-      'variable_declaration',
-      'lexical_declaration',
-      'import_statement',
-      'export_statement',
-      'member_expression',
-      'assignment_expression',
-    ]);
-  } else if (language === 'bash') {
-    nodeTypesToCollect = new Set([
-      // Bash AST nodes
-      'command',
-      'function_definition',
-      'variable_assignment',
-      'declaration_command',
-      'if_statement',
-      'for_statement',
-      'c_style_for_statement',
-      'while_statement',
-    ]);
-  } else {
-    nodeTypesToCollect = new Set([
-      // Java AST nodes
-      'method_invocation',
-      'object_creation_expression',
-      'class_declaration',
-      'method_declaration',
-      'constructor_declaration',
-      'field_declaration',
-      'import_declaration',
-      'interface_declaration',
-      'enum_declaration',
-    ]);
-  }
-  const nodeCache = collectAllNodes(tree.rootNode, nodeTypesToCollect);
+  const nodeCache = collectAllNodes(tree.rootNode, getNodeTypesForLanguage(language));
 
-  // Extract all components using the cached nodes
-  const meta = extractMeta(code, tree, filePath, language);
-  const types = extractTypes(tree, nodeCache, language);
-  const calls = extractCalls(tree, nodeCache, language);
+  // Extract all IR components
+  const meta    = extractMeta(code, tree, filePath, language);
+  const types   = extractTypes(tree, nodeCache, language);
+  const calls   = extractCalls(tree, nodeCache, language);
   const imports = extractImports(tree, language);
   const exports = extractExports(types);
-  const cfg = buildCFG(tree, language);
-  const dfg = buildDFG(tree, nodeCache, language);
+  const cfg     = buildCFG(tree, language);
+  const dfg     = buildDFG(tree, nodeCache, language);
 
-  // Extract @sanitizer annotated method names (from Javadoc comments)
-  const sanitizerMethods: string[] = [];
-  for (const type of types) {
-    for (const method of type.methods) {
-      if (method.annotations.includes('sanitizer')) {
-        sanitizerMethods.push(method.name);
-      }
-    }
-  }
-
-  // First, do a preliminary taint analysis to find inter-procedural parameter sources
-  // These need to be passed to constant propagation so it can track taint from method parameters
-  let baseConfig = options.taintConfig ?? getDefaultConfig();
-
-  // Merge language plugin built-in sources/sinks into the config.
-  // This handles languages (e.g. Bash) whose patterns are defined on the plugin
-  // rather than in YAML config files loaded by getDefaultConfig().
-  if (!options.taintConfig) {
-    const plugin = getLanguagePlugin(language);
-    if (plugin) {
-      const pluginSources = plugin.getBuiltinSources();
-      const pluginSinks = plugin.getBuiltinSinks();
-      if (pluginSources.length > 0 || pluginSinks.length > 0) {
-        baseConfig = {
-          ...baseConfig,
-          sources: [
-            ...baseConfig.sources,
-            ...pluginSources.map(s => ({
-              method: s.method,
-              class: s.class,
-              annotation: s.annotation,
-              type: s.type as SourceType,
-              severity: s.severity,
-              return_tainted: s.returnTainted ?? false,
-            })),
-          ],
-          sinks: [
-            ...baseConfig.sinks,
-            ...pluginSinks.map(s => ({
-              method: s.method,
-              class: s.class,
-              type: s.type as SinkType,
-              cwe: s.cwe,
-              severity: s.severity,
-              arg_positions: s.argPositions,
-            })),
-          ],
-        };
-      }
-    }
-  }
-
-  const preliminaryTaint = analyzeTaint(calls, types, baseConfig);
-
-  // Extract inter-procedural parameter sources
-  const taintedParameters: Array<{ methodName: string; paramName: string }> = [];
-  for (const source of preliminaryTaint.sources) {
-    if (source.type === 'interprocedural_param') {
-      // Location format: "ParamType paramName in methodName"
-      const match = source.location.match(/(\S+)\s+(\S+)\s+in\s+(\S+)/);
-      if (match) {
-        taintedParameters.push({
-          methodName: match[3],
-          paramName: match[2],
-        });
-      }
-    }
-  }
-
-  // Run constant propagation with tainted parameters
-  const constPropResult = analyzeConstantPropagation(tree, code, {
-    sanitizerMethods,
-    taintedParameters,
+  // Build CodeGraph once — shared across all passes.
+  // Taint is empty at construction time; sources/sinks/sanitizers are populated by passes.
+  const graph = new CodeGraph({
+    meta, types, calls, cfg, dfg,
+    taint: { sources: [], sinks: [], sanitizers: [] },
+    imports, exports, unresolved: [], enriched: {},
   });
 
-  // Analyze taint with config
-  const taint = analyzeTaint(calls, types, baseConfig);
+  const config = options.taintConfig ?? getDefaultConfig();
 
-  // Add sources for getters that return tainted constructor fields
-  const getterSources = findGetterSources(types, constPropResult.instanceFieldTaint, code);
-  taint.sources.push(...getterSources);
+  // Run the analysis pipeline
+  const results = new AnalysisPipeline()
+    .add(new TaintMatcherPass())
+    .add(new ConstantPropagationPass(tree))
+    .add(new LanguageSourcesPass())
+    .add(new SinkFilterPass())
+    .add(new TaintPropagationPass())
+    .add(new InterproceduralPass())
+    .run(graph, code, language, config);
 
-  // Add sources for JavaScript variable assignments with tainted patterns
-  const jsAssignmentSources = findJavaScriptAssignmentSources(code, language);
-  taint.sources.push(...jsAssignmentSources);
+  const sinkFilter = results.get('sink-filter')    as SinkFilterResult;
+  const interProc  = results.get('interprocedural') as InterproceduralPassResult;
 
-  // Add sources for Python variable assignments with tainted request patterns
-  const pythonAssignmentSources = findPythonAssignmentSources(code, language);
-  taint.sources.push(...pythonAssignmentSources);
+  const taint: CircleIR['taint'] = {
+    sources:    sinkFilter.sources,
+    sinks:      [...sinkFilter.sinks, ...interProc.additionalSinks],
+    sanitizers: sinkFilter.sanitizers,
+    flows:      interProc.additionalFlows,
+    interprocedural: interProc.interprocedural,
+  };
 
-  // Add sinks for JavaScript DOM XSS patterns (innerHTML, document.write, etc.)
-  const jsDOMSinks = findJavaScriptDOMSinks(code, language);
-  for (const domSink of jsDOMSinks) {
-    // Avoid duplicates
-    const alreadyExists = taint.sinks.some(
-      s => s.line === domSink.line && s.cwe === domSink.cwe
-    );
-    if (!alreadyExists) {
-      taint.sinks.push({
-        type: 'xss',
-        cwe: domSink.cwe,
-        line: domSink.line,
-        location: domSink.location,
-        method: domSink.method,
-        confidence: 1.0,
-      });
-    }
-  }
-
-  logger.debug('Initial taint analysis', {
-    sources: taint.sources.length,
-    sinks: taint.sinks.length,
-    sanitizers: taint.sanitizers?.length ?? 0,
-    getterSources: getterSources.length,
-    jsDOMSinks: jsDOMSinks.length,
-  });
-
-  // Filter sinks that are in dead code (unreachable)
-  taint.sinks = taint.sinks.filter(sink => !constPropResult.unreachableLines.has(sink.line));
-
-  // Filter sinks that use clean array elements (strong updates)
-  taint.sinks = filterCleanArraySinks(
-    taint.sinks,
-    calls,
-    constPropResult.taintedArrayElements,
-    constPropResult.symbols
-  );
-
-  // Filter sinks that use variables proven clean by constant propagation (strong updates)
-  taint.sinks = filterCleanVariableSinks(
-    taint.sinks,
-    calls,
-    constPropResult.tainted,
-    constPropResult.symbols,
-    dfg,
-    constPropResult.sanitizedVars,
-    constPropResult.synchronizedLines
-  );
-
-  // Filter sinks that are wrapped by sanitizers on the same line
-  taint.sinks = filterSanitizedSinks(taint.sinks, taint.sanitizers ?? [], calls);
-
-  // Python: reduce XPath false-positives using forward taint propagation +
-  // apostrophe-guard sanitizer detection; also detect trust boundary violations
-  // (flask.session[key] = value) which are subscript assignments, not call nodes.
-  if (language === 'python') {
-    const pyTaintedVars = buildPythonTaintedVars(code);
-    const pySanitizedVars = findPythonQuoteSanitizedVars(code);
-    // Propagate sanitization: if bar is sanitized and query = f"...{bar}...", query is also sanitized
-    for (const line of code.split('\n')) {
-      const am = line.match(/^\s*(\w+)\s*=\s*(.+)$/);
-      if (!am) continue;
-      const [, lhs, rhs] = am;
-      if ([...pySanitizedVars].some(v => new RegExp(`\\b${v}\\b`).test(rhs))) {
-        pySanitizedVars.add(lhs);
-      }
-    }
-    // Detect inline .replace() sanitizers: query = f"...{bar.replace('\'', '&apos;')}..."
-    // The tainted var appears with .replace() in the rhs — treat lhs as XPath-safe
-    for (const line of code.split('\n')) {
-      const am = line.match(/^\s*(\w+)\s*=\s*(.+)$/);
-      if (!am) continue;
-      const [, lhs, rhs] = am;
-      const hasReplaceOnTainted = [...pyTaintedVars.keys()].some(v =>
-        new RegExp(`\\b${v}\\.replace\\s*\\(`).test(rhs)
-      );
-      if (hasReplaceOnTainted) pySanitizedVars.add(lhs);
-    }
-    const pySourceLines = code.split('\n');
-
-    // Filter XPath sinks: keep only if a tainted var is used at the sink line
-    taint.sinks = taint.sinks.filter(sink => {
-      if (sink.type !== 'xpath_injection') return true;
-      const sinkLineText = pySourceLines[sink.line - 1] ?? '';
-      const taintedVarOnLine = [...pyTaintedVars.keys()].find(v =>
-        new RegExp(`\\b${v}\\b`).test(sinkLineText)
-      );
-      if (!taintedVarOnLine) return false;
-      if (pySanitizedVars.has(taintedVarOnLine)) return false;
-      // Suppress parameterized XPath: root.xpath(query, name=bar) where bar is a keyword arg
-      if (new RegExp(`\\.xpath\\s*\\([^)]*\\b\\w+\\s*=\\s*\\b${taintedVarOnLine}\\b`).test(sinkLineText)) return false;
-      return true;
-    });
-
-    // Add trust boundary sinks from session subscript assignments
-    const trustViolations = findPythonTrustBoundaryViolations(code, language, pyTaintedVars);
-    for (const v of trustViolations) {
-      const alreadyExists = taint.sinks.some(
-        s => s.line === v.sinkLine && s.type === 'trust_boundary'
-      );
-      if (!alreadyExists) {
-        taint.sinks.push({
-          type: 'trust_boundary',
-          cwe: 'CWE-501',
-          line: v.sinkLine,
-          location: `session write at line ${v.sinkLine}`,
-          confidence: 0.85,
-        });
-      }
-    }
-
-    // Add XSS sinks from return/yield statements (Flask/Django routes return HTML directly)
-    const pyReturnXSS = findPythonReturnXSSSinks(code, language, pyTaintedVars);
-    for (const r of pyReturnXSS) {
-      const alreadyExists = taint.sinks.some(
-        s => s.line === r.sinkLine && s.type === 'xss'
-      );
-      if (!alreadyExists) {
-        taint.sinks.push({
-          type: 'xss',
-          cwe: 'CWE-79',
-          line: r.sinkLine,
-          location: `return HTML with user input at line ${r.sinkLine}`,
-          confidence: 0.9,
-        });
-      }
-    }
-  }
-
-  // JavaScript/TypeScript: filter XSS sinks where the argument variable is NOT actually
-  // tainted by user input (e.g., res.send(stdout) — stdout is a callback param from exec(),
-  // not a variable derived from req.query/req.body). This prevents FP pairs like:
-  //   CWE-78 (correct) + CWE-79 (spurious) for the same source when the cmd output is sent.
-  if (['javascript', 'typescript'].includes(language)) {
-    const jsTaintedVars = buildJavaScriptTaintedVars(code, language);
-    if (jsTaintedVars.size > 0) {
-      const jsSourceLines = code.split('\n');
-      taint.sinks = taint.sinks.filter(sink => {
-        if (sink.type !== 'xss') return true;
-        const sinkLineText = jsSourceLines[sink.line - 1] ?? '';
-        // Keep if any known-tainted variable appears on this sink line
-        if ([...jsTaintedVars.keys()].some(v => new RegExp(`\\b${v}\\b`).test(sinkLineText))) return true;
-        // Also keep if the sink line directly references a taint source (inline use, no assignment)
-        if (JS_TAINTED_PATTERNS.some(p => p.pattern.test(sinkLineText))) return true;
-        return false;
-      });
-    }
-  }
-
-  // Propagate taint through dataflow to find verified flows
-  if (taint.sources.length > 0 && taint.sinks.length > 0) {
-    const propagationResult = propagateTaint(
-      dfg,
-      calls,
-      taint.sources,
-      taint.sinks,
-      taint.sanitizers ?? []
-    );
-
-    // Filter flows using constant propagation (eliminate false positives)
-    const verifiedFlows = propagationResult.flows.filter(flow => {
-      // Check if the sink line is in dead code
-      if (constPropResult.unreachableLines.has(flow.sink.line)) {
-        return false;
-      }
-
-      // Check each step in the path - if any variable has a constant value, skip
-      for (const step of flow.path) {
-        const fpCheck = isFalsePositive(constPropResult, step.line, step.variable);
-        if (fpCheck.isFalsePositive) {
-          return false;
-        }
-      }
-
-      // Check for correlated predicates: if the sink is under condition !C
-      // and the taint was added under condition C, they're mutually exclusive
-      if (isCorrelatedPredicateFP(constPropResult, flow)) {
-        return false;
-      }
-
-      return true;
-    });
-
-    // Convert flows to TaintFlowInfo format
-    taint.flows = verifiedFlows.map(flow => ({
-      source_line: flow.source.line,
-      sink_line: flow.sink.line,
-      source_type: flow.source.type,
-      sink_type: flow.sink.type,
-      path: flow.path.map(step => ({
-        variable: step.variable,
-        line: step.line,
-        type: step.type,
-      })),
-      confidence: flow.confidence,
-      sanitized: flow.sanitized,
-    }));
-
-    // Add array element flows that DFG-based analysis might miss
-    const arrayFlows = detectArrayElementFlows(
-      calls,
-      taint.sources,
-      taint.sinks,
-      constPropResult.taintedArrayElements,
-      constPropResult.unreachableLines
-    );
-    if (arrayFlows && arrayFlows.length > 0) {
-      if (!taint.flows) {
-        taint.flows = [];
-      }
-      for (const flow of arrayFlows) {
-        // Avoid duplicates
-        if (!taint.flows.some(f => f.source_line === flow.source_line && f.sink_line === flow.sink_line)) {
-          taint.flows.push(flow);
-        }
-      }
-    }
-
-    // Add collection/iterator flows that DFG-based analysis might miss
-    const collectionFlows = detectCollectionFlows(
-      calls,
-      taint.sources,
-      taint.sinks,
-      constPropResult.tainted,
-      constPropResult.unreachableLines
-    );
-    if (collectionFlows && collectionFlows.length > 0) {
-      if (!taint.flows) {
-        taint.flows = [];
-      }
-      for (const flow of collectionFlows) {
-        // Avoid duplicates
-        if (taint.flows.some(f => f.source_line === flow.source_line && f.sink_line === flow.sink_line)) {
-          continue;
-        }
-
-        // Apply the same filtering as DFG-based flows
-        const flowForCheck = {
-          source: { line: flow.source_line, type: flow.source_type },
-          sink: { line: flow.sink_line, type: flow.sink_type },
-          path: flow.path.map(p => ({ variable: p.variable, line: p.line })),
-        };
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        if (isCorrelatedPredicateFP(constPropResult, flowForCheck as any)) {
-          continue;
-        }
-
-        // Check if any step in the path is a false positive
-        let isFP = false;
-        for (const step of flow.path) {
-          const fpCheck = isFalsePositive(constPropResult, step.line, step.variable);
-          if (fpCheck.isFalsePositive) {
-            isFP = true;
-            break;
-          }
-        }
-        if (isFP) {
-          continue;
-        }
-
-        taint.flows.push(flow);
-      }
-    }
-
-    // Add direct parameter-to-sink flows that DFG might miss
-    const paramFlows = detectParameterSinkFlows(
-      types,
-      calls,
-      taint.sources,
-      taint.sinks,
-      constPropResult.unreachableLines
-    );
-    if (paramFlows && paramFlows.length > 0) {
-      if (!taint.flows) {
-        taint.flows = [];
-      }
-      for (const flow of paramFlows) {
-        // Avoid duplicates
-        if (!taint.flows.some(f => f.source_line === flow.source_line && f.sink_line === flow.sink_line)) {
-          taint.flows.push(flow);
-        }
-      }
-    }
-
-    // Perform inter-procedural analysis
-    const interProc = analyzeInterprocedural(
-      types,
-      calls,
-      dfg,
-      taint.sources,
-      taint.sinks,
-      taint.sanitizers ?? [],
-      {
-        taintedVariables: constPropResult.tainted,
-      }
-    );
-
-    // Add inter-procedural sinks to the taint sinks and generate flows
-    // Skip external_taint_escape (CWE-668) here: they are only used as a last resort
-    // in the fallback path below when no other sinks exist. Adding them when proper sinks
-    // already exist creates duplicate/spurious findings (e.g., http.get already reported
-    // as CWE-918 SSRF; also getting CWE-668 for the same call chain is a FP).
-    for (const sink of interProc.propagatedSinks) {
-      if (sink.type === 'external_taint_escape') continue;
-      if (!taint.sinks.some(s => s.line === sink.line)) {
-        taint.sinks.push(sink);
-      }
-    }
-
-    // Generate flows for inter-procedural propagated sinks
-    // These sinks are inside called methods where tainted args were passed
-    if (interProc.propagatedSinks.length > 0 && taint.sources.length > 0) {
-      if (!taint.flows) {
-        taint.flows = [];
-      }
-
-      // Build set of sanitizer method names to skip (methods with @sanitizer annotation)
-      const sanitizerMethodNames = new Set<string>();
-      for (const san of taint.sanitizers ?? []) {
-        if (san.type === 'javadoc_sanitizer') {
-          // Extract method name from "methodName()" format
-          const match = san.method.match(/^(\w+)\(\)$/);
-          if (match) sanitizerMethodNames.add(match[1]);
-          else sanitizerMethodNames.add(san.method);
-        }
-      }
-
-      for (const sink of interProc.propagatedSinks) {
-        // Skip external taint escape sinks (not real vulnerability sinks)
-        if (sink.type === 'external_taint_escape') continue;
-
-        // Find which call edge brought taint to this sink's method
-        for (const edge of interProc.callEdges) {
-          if (!interProc.taintedMethods.has(edge.calleeMethod)) continue;
-          const method = interProc.methodNodes.get(edge.calleeMethod);
-          if (!method) continue;
-          if (sink.line < method.startLine || sink.line > method.endLine) continue;
-
-          // Skip sinks inside sanitizer methods (@sanitizer annotation)
-          if (sanitizerMethodNames.has(method.name)) continue;
-
-          // Find the source connected to this call
-          for (const source of taint.sources) {
-            // Source should be in the caller's scope, at or before the call line
-            if (source.line > edge.callLine) continue;
-
-            // Skip low-confidence interprocedural_param sources
-            if (source.type === 'interprocedural_param' && source.confidence < 0.6) continue;
-
-            if (taint.flows.some(f => f.source_line === source.line && f.sink_line === sink.line)) continue;
-
-            taint.flows.push({
-              source_line: source.line,
-              sink_line: sink.line,
-              source_type: source.type,
-              sink_type: sink.type,
-              path: [
-                { variable: source.location, line: source.line, type: 'source' },
-                { variable: `call to ${method.name}()`, line: edge.callLine, type: 'use' },
-                { variable: sink.location, line: sink.line, type: 'sink' },
-              ],
-              confidence: sink.confidence * source.confidence * 0.85,
-              sanitized: false,
-            });
-            break; // One source per sink is enough
-          }
-          break; // One call edge per sink is enough
-        }
-      }
-    }
-
-    // Build inter-procedural info
-    const taintBridges = findTaintBridges(interProc);
-    taint.interprocedural = {
-      tainted_methods: Array.from(interProc.taintedMethods),
-      taint_bridges: taintBridges,
-      method_flows: interProc.callEdges
-        .filter(edge => interProc.taintedMethods.has(edge.calleeMethod))
-        .map(edge => ({
-          caller: edge.callerMethod,
-          callee: edge.calleeMethod,
-          call_line: edge.callLine,
-          tainted_args: edge.taintedArgs,
-          returns_taint: interProc.taintedReturns.has(edge.calleeMethod),
-        })),
-    };
-  }
-
-  // Perform inter-procedural analysis even when no initial sinks (can detect external taint escapes)
-  if (taint.sources.length > 0 && taint.sinks.length === 0) {
-    const interProc = analyzeInterprocedural(
-      types,
-      calls,
-      dfg,
-      taint.sources,
-      [],  // No initial sinks
-      taint.sanitizers ?? [],
-      {
-        taintedVariables: constPropResult.tainted,
-      }
-    );
-
-    // Add inter-procedural sinks (e.g., external_taint_escape)
-    for (const sink of interProc.propagatedSinks) {
-      if (!constPropResult.unreachableLines.has(sink.line) &&
-          !taint.sinks.some(s => s.line === sink.line)) {
-        taint.sinks.push(sink);
-      }
-    }
-
-    // Build inter-procedural info
-    if (interProc.taintedMethods.size > 0 || interProc.propagatedSinks.length > 0) {
-      const taintBridges = findTaintBridges(interProc);
-      taint.interprocedural = {
-        tainted_methods: Array.from(interProc.taintedMethods),
-        taint_bridges: taintBridges,
-        method_flows: interProc.callEdges
-          .filter(edge => interProc.taintedMethods.has(edge.calleeMethod))
-          .map(edge => ({
-            caller: edge.callerMethod,
-            callee: edge.calleeMethod,
-            call_line: edge.callLine,
-            tainted_args: edge.taintedArgs,
-            returns_taint: interProc.taintedReturns.has(edge.calleeMethod),
-          })),
-      };
-    }
-
-    // If we found new sinks, create flows from sources
-    if (taint.sinks.length > 0) {
-      taint.flows = taint.sinks.map(sink => ({
-        source_line: taint.sources[0].line,
-        sink_line: sink.line,
-        source_type: taint.sources[0].type,
-        sink_type: sink.type,
-        path: [
-          { variable: 'input', line: taint.sources[0].line, type: 'source' as const },
-          { variable: 'input', line: sink.line, type: 'sink' as const },
-        ],
-        confidence: taint.sources[0].confidence * sink.confidence,
-        sanitized: false,
-      }));
-    }
-  }
-
-  // Detect unresolved items
   const unresolved = detectUnresolved(calls, types, dfg);
-
-  // Build enriched section
-  const enriched = buildEnriched(types, calls, taint.sources, taint.sinks);
+  const enriched   = buildEnriched(types, calls, taint.sources, taint.sinks);
 
   logger.debug('Analysis complete', {
     filePath,
     finalSources: taint.sources.length,
-    finalSinks: taint.sinks.length,
-    flows: taint.flows?.length ?? 0,
+    finalSinks:   taint.sinks.length,
+    flows:        taint.flows?.length ?? 0,
     unresolvedItems: unresolved.length,
   });
 
-  return {
-    meta,
-    types,
-    calls,
-    cfg,
-    dfg,
-    taint,
-    imports,
-    exports,
-    unresolved,
-    enriched,
-  };
+  return { meta, types, calls, cfg, dfg, taint, imports, exports, unresolved, enriched };
 }
+
+// ---------------------------------------------------------------------------
+// Simplified API response format
+// ---------------------------------------------------------------------------
 
 /**
  * Analyze code and return a simplified API response format.
@@ -1443,36 +318,7 @@ export async function analyzeForAPI(
 
   const analysisStart = performance.now();
 
-  // Collect all node types in a single traversal for better performance
-  const isJavaScript = language === 'javascript' || language === 'typescript';
-  const isRust = language === 'rust';
-  const isPython = language === 'python';
-  let nodeTypesToCollect: Set<string>;
-  if (isRust) {
-    nodeTypesToCollect = new Set([
-      'call_expression', 'macro_invocation', 'function_item', 'struct_item',
-      'impl_item', 'enum_item', 'trait_item', 'mod_item', 'use_declaration',
-      'let_declaration', 'field_expression', 'scoped_identifier',
-    ]);
-  } else if (isPython) {
-    nodeTypesToCollect = new Set([
-      'call', 'function_definition', 'class_definition', 'import_statement',
-      'import_from_statement', 'assignment', 'attribute', 'subscript',
-    ]);
-  } else if (isJavaScript) {
-    nodeTypesToCollect = new Set([
-      'call_expression', 'new_expression', 'class_declaration', 'function_declaration',
-      'arrow_function', 'method_definition', 'variable_declaration', 'lexical_declaration',
-      'import_statement', 'export_statement',
-    ]);
-  } else {
-    nodeTypesToCollect = new Set([
-      'method_invocation', 'object_creation_expression', 'class_declaration',
-      'method_declaration', 'field_declaration', 'import_declaration',
-      'interface_declaration', 'enum_declaration',
-    ]);
-  }
-  const nodeCache = collectAllNodes(tree.rootNode, nodeTypesToCollect);
+  const nodeCache = collectAllNodes(tree.rootNode, getNodeTypesForLanguage(language));
 
   const types = extractTypes(tree, nodeCache, language);
   const calls = extractCalls(tree, nodeCache, language);
@@ -1505,38 +351,16 @@ export async function analyzeForAPI(
   let pythonTaintedVars: Map<string, number> = new Map();
   if (language === 'python') {
     pythonTaintedVars = buildPythonTaintedVars(code);
-    const pythonSanitizedVars = findPythonQuoteSanitizedVars(code);
-    // Propagate sanitization: if bar is sanitized and query = f"...{bar}...", query is also sanitized
-    for (const line of code.split('\n')) {
-      const am = line.match(/^\s*(\w+)\s*=\s*(.+)$/);
-      if (!am) continue;
-      const [, lhs, rhs] = am;
-      if ([...pythonSanitizedVars].some(v => new RegExp(`\\b${v}\\b`).test(rhs))) {
-        pythonSanitizedVars.add(lhs);
-      }
-    }
-    // Detect inline .replace() sanitizers: query = f"...{bar.replace('\'', '&apos;')}..."
-    for (const line of code.split('\n')) {
-      const am = line.match(/^\s*(\w+)\s*=\s*(.+)$/);
-      if (!am) continue;
-      const [, lhs, rhs] = am;
-      const hasReplaceOnTainted = [...pythonTaintedVars.keys()].some(v =>
-        new RegExp(`\\b${v}\\.replace\\s*\\(`).test(rhs)
-      );
-      if (hasReplaceOnTainted) pythonSanitizedVars.add(lhs);
-    }
+    const pythonSanitizedVars = buildPythonSanitizedVars(code, pythonTaintedVars);
     const sourceLines = code.split('\n');
     filteredSinks = filteredSinks.filter(sink => {
       if (sink.type !== 'xpath_injection') return true;
-      // Keep XPath sink only if a tainted variable is used at the sink line
       const sinkLineText = sourceLines[sink.line - 1] ?? '';
       const taintedVarOnLine = [...pythonTaintedVars.keys()].find(v =>
         new RegExp(`\\b${v}\\b`).test(sinkLineText)
       );
       if (!taintedVarOnLine) return false;
-      // Kill if the variable is protected by an apostrophe guard
       if (pythonSanitizedVars.has(taintedVarOnLine)) return false;
-      // Suppress parameterized XPath: root.xpath(query, name=bar) where bar is a keyword arg
       if (new RegExp(`\\.xpath\\s*\\([^)]*\\b\\w+\\s*=\\s*\\b${taintedVarOnLine}\\b`).test(sinkLineText)) return false;
       return true;
     });
@@ -1547,9 +371,8 @@ export async function analyzeForAPI(
 
   // Python: detect trust boundary violations (flask.session[key] = taintedVal)
   if (language === 'python') {
-    const trustViolations = findPythonTrustBoundaryViolations(code, language, pythonTaintedVars);
+    const trustViolations = findPythonTrustBoundaryViolations(code, pythonTaintedVars);
     for (const v of trustViolations) {
-      // Avoid duplicate: only add if no existing vulnerability for same sink line
       const alreadyReported = vulnerabilities.some(
         existing => existing.sink.line === v.sinkLine && existing.type === 'trust_boundary'
       );
@@ -1583,6 +406,10 @@ export async function analyzeForAPI(
     },
   };
 }
+
+// ---------------------------------------------------------------------------
+// Vulnerability matching (used by analyzeForAPI)
+// ---------------------------------------------------------------------------
 
 /**
  * Find potential vulnerabilities by matching sources to sinks.
@@ -1704,451 +531,9 @@ function calculateVulnConfidence(
   return Math.min(confidence, 1.0);
 }
 
-function evaluateSimpleExpression(
-  expr: string,
-  symbols: Map<string, { value: string | number | boolean | null; type: string; sourceLine: number }>
-): string {
-  let evaluated = expr;
-  for (const [name, val] of symbols) {
-    if (val.type === 'int' || val.type === 'float') {
-      const regex = new RegExp(`\\b${name}\\b`, 'g');
-      evaluated = evaluated.replace(regex, String(val.value));
-    }
-  }
-
-  try {
-    if (/^[\d\s+\-*/().]+$/.test(evaluated)) {
-      const result = Function('"use strict"; return (' + evaluated + ')')();
-      if (typeof result === 'number' && !isNaN(result)) {
-        return String(Math.floor(result));
-      }
-    }
-  } catch {
-    // Evaluation failed
-  }
-
-  return expr;
-}
-
-function filterCleanArraySinks(
-  sinks: CircleIR['taint']['sinks'],
-  calls: CircleIR['calls'],
-  taintedArrayElements: Map<string, Set<string>>,
-  symbols: Map<string, { value: string | number | boolean | null; type: string; sourceLine: number }>
-): CircleIR['taint']['sinks'] {
-  const callsByLine = new Map<number, typeof calls>();
-  for (const call of calls) {
-    const existing = callsByLine.get(call.location.line) ?? [];
-    existing.push(call);
-    callsByLine.set(call.location.line, existing);
-  }
-
-  return sinks.filter(sink => {
-    const callsAtSink = callsByLine.get(sink.line) ?? [];
-
-    for (const call of callsAtSink) {
-      for (const arg of call.arguments) {
-        const arrayAccessMatch = arg.expression?.match(/^(\w+)\[(\d+|[^[\]]+)\]$/);
-        if (arrayAccessMatch) {
-          const arrayName = arrayAccessMatch[1];
-          let indexStr = arrayAccessMatch[2];
-          indexStr = evaluateSimpleExpression(indexStr, symbols);
-
-          const taintedIndices = taintedArrayElements.get(arrayName);
-          if (taintedIndices !== undefined) {
-            const isTainted = taintedIndices.has(indexStr) || taintedIndices.has('*');
-            if (!isTainted) {
-              return false;
-            }
-          }
-        }
-      }
-    }
-
-    return true;
-  });
-}
-
-function filterCleanVariableSinks(
-  sinks: CircleIR['taint']['sinks'],
-  calls: CircleIR['calls'],
-  taintedVars: Set<string>,
-  symbols: Map<string, { value: string | number | boolean | null; type: string; sourceLine: number }>,
-  dfg?: CircleIR['dfg'],
-  sanitizedVars?: Set<string>,
-  synchronizedLines?: Set<number>
-): CircleIR['taint']['sinks'] {
-  const fieldNames = new Set<string>();
-  if (dfg) {
-    for (const def of dfg.defs) {
-      if (def.kind === 'field') {
-        fieldNames.add(def.variable);
-      }
-    }
-  }
-
-  const callsByLine = new Map<number, typeof calls>();
-  for (const call of calls) {
-    const existing = callsByLine.get(call.location.line) ?? [];
-    existing.push(call);
-    callsByLine.set(call.location.line, existing);
-  }
-
-  return sinks.filter(sink => {
-    const callsAtSink = callsByLine.get(sink.line) ?? [];
-    const isInSynchronizedBlock = synchronizedLines?.has(sink.line) ?? false;
-
-    for (const call of callsAtSink) {
-      let allArgsAreClean = true;
-      const methodName = call.in_method;
-
-      for (const arg of call.arguments) {
-        if (arg.variable && !arg.expression?.includes('[')) {
-          const varName = arg.variable;
-          const scopedName = methodName ? `${methodName}:${varName}` : varName;
-
-          if (fieldNames.has(varName) && !isInSynchronizedBlock) {
-            allArgsAreClean = false;
-            continue;
-          }
-
-          if (sanitizedVars?.has(scopedName) || sanitizedVars?.has(varName)) {
-            continue;
-          }
-
-          if (taintedVars.has(scopedName) || taintedVars.has(varName)) {
-            allArgsAreClean = false;
-            continue;
-          }
-
-          const symbolValue = symbols.get(scopedName) ?? symbols.get(varName);
-          if (symbolValue && symbolValue.type !== 'unknown') {
-            continue;
-          }
-
-          allArgsAreClean = false;
-        } else {
-          // Check if the argument is a pure literal (string, number, boolean, etc.)
-          // Literals are inherently clean — they can't carry tainted data.
-          if (arg.literal != null) {
-            continue;
-          }
-          // Also check if the expression is a quoted string literal without variable interpolation
-          if (arg.expression && !arg.variable && isStringLiteralExpression(arg.expression)) {
-            continue;
-          }
-          allArgsAreClean = false;
-        }
-      }
-
-      if (allArgsAreClean && call.arguments.length > 0) {
-        return false;
-      }
-    }
-
-    return true;
-  });
-}
-
-function isStringLiteralExpression(expr: string): boolean {
-  const trimmed = expr.trim();
-  return (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-         (trimmed.startsWith("'") && trimmed.endsWith("'"));
-}
-
-function filterSanitizedSinks(
-  sinks: CircleIR['taint']['sinks'],
-  sanitizers: CircleIR['taint']['sanitizers'],
-  calls: CircleIR['calls']
-): CircleIR['taint']['sinks'] {
-  if (!sanitizers || sanitizers.length === 0) {
-    return sinks;
-  }
-
-  const sanitizersByLine = new Map<number, typeof sanitizers>();
-  for (const san of sanitizers) {
-    const existing = sanitizersByLine.get(san.line) ?? [];
-    existing.push(san);
-    sanitizersByLine.set(san.line, existing);
-  }
-
-  const callsByLine = new Map<number, typeof calls>();
-  for (const call of calls) {
-    const existing = callsByLine.get(call.location.line) ?? [];
-    existing.push(call);
-    callsByLine.set(call.location.line, existing);
-  }
-
-  return sinks.filter(sink => {
-    const lineSanitizers = sanitizersByLine.get(sink.line);
-    if (!lineSanitizers || lineSanitizers.length === 0) {
-      return true;
-    }
-
-    for (const san of lineSanitizers) {
-      if (san.sanitizes.includes(sink.type as typeof san.sanitizes[number])) {
-        const lineCalls = callsByLine.get(sink.line) ?? [];
-
-        for (const call of lineCalls) {
-          for (const arg of call.arguments) {
-            const expr = arg.expression || '';
-            const sanMethodMatch = san.method.match(/(?:(\w+)\.)?(\w+)\(\)/);
-            if (sanMethodMatch) {
-              const sanMethodName = sanMethodMatch[2];
-              const sanClassName = sanMethodMatch[1];
-              if (sanClassName) {
-                if (expr.includes(`${sanClassName}.${sanMethodName}(`)) {
-                  return false;
-                }
-              } else if (expr.includes(`${sanMethodName}(`)) {
-                return false;
-              }
-            }
-          }
-        }
-      }
-    }
-
-    return true;
-  });
-}
-
-function detectCollectionFlows(
-  calls: CircleIR['calls'],
-  sources: CircleIR['taint']['sources'],
-  sinks: CircleIR['taint']['sinks'],
-  taintedVars: Set<string>,
-  unreachableLines: Set<number>
-): CircleIR['taint']['flows'] {
-  const flows: CircleIR['taint']['flows'] = [];
-
-  const callsByLine = new Map<number, typeof calls>();
-  for (const call of calls) {
-    const existing = callsByLine.get(call.location.line) ?? [];
-    existing.push(call);
-    callsByLine.set(call.location.line, existing);
-  }
-
-  for (const sink of sinks) {
-    if (unreachableLines.has(sink.line)) {
-      continue;
-    }
-
-    const callsAtSink = callsByLine.get(sink.line) ?? [];
-
-    for (const call of callsAtSink) {
-      for (const arg of call.arguments) {
-        if (arg.variable) {
-          const varName = arg.variable;
-          const scopedName = call.in_method ? `${call.in_method}:${varName}` : varName;
-
-          if (taintedVars.has(varName) || taintedVars.has(scopedName)) {
-            const source = sources[0];
-            if (source) {
-              flows.push({
-                source_line: source.line,
-                sink_line: sink.line,
-                source_type: source.type,
-                sink_type: sink.type,
-                path: [
-                  { variable: varName, line: source.line, type: 'source' as const },
-                  { variable: varName, line: sink.line, type: 'sink' as const },
-                ],
-                confidence: 0.8,
-                sanitized: false,
-              });
-            }
-          }
-        }
-
-        if (arg.expression) {
-          const expr = arg.expression;
-          const collectionMethods = ['getLast', 'getFirst', 'get', 'next', 'poll', 'peek', 'toArray'];
-          for (const method of collectionMethods) {
-            const methodPattern = new RegExp(`(\\w+)\\.${method}\\(`);
-            const match = expr.match(methodPattern);
-            if (match) {
-              const collectionVar = match[1];
-              const scopedCollection = call.in_method ? `${call.in_method}:${collectionVar}` : collectionVar;
-              if (taintedVars.has(collectionVar) || taintedVars.has(scopedCollection)) {
-                const source = sources[0];
-                if (source) {
-                  flows.push({
-                    source_line: source.line,
-                    sink_line: sink.line,
-                    source_type: source.type,
-                    sink_type: sink.type,
-                    path: [
-                      { variable: collectionVar, line: source.line, type: 'source' as const },
-                      { variable: collectionVar, line: sink.line, type: 'sink' as const },
-                    ],
-                    confidence: 0.75,
-                    sanitized: false,
-                  });
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-
-  return flows;
-}
-
-function detectArrayElementFlows(
-  calls: CircleIR['calls'],
-  sources: CircleIR['taint']['sources'],
-  sinks: CircleIR['taint']['sinks'],
-  taintedArrayElements: Map<string, Set<string>>,
-  unreachableLines: Set<number>
-): CircleIR['taint']['flows'] {
-  const flows: CircleIR['taint']['flows'] = [];
-
-  const callsByLine = new Map<number, typeof calls>();
-  for (const call of calls) {
-    const existing = callsByLine.get(call.location.line) ?? [];
-    existing.push(call);
-    callsByLine.set(call.location.line, existing);
-  }
-
-  for (const sink of sinks) {
-    if (unreachableLines.has(sink.line)) {
-      continue;
-    }
-
-    const callsAtSink = callsByLine.get(sink.line) ?? [];
-
-    for (const call of callsAtSink) {
-      for (const arg of call.arguments) {
-        const arrayAccessMatch = arg.expression?.match(/^(\w+)\[(\d+|[^[\]]+)\]$/);
-        if (arrayAccessMatch) {
-          const arrayName = arrayAccessMatch[1];
-          const indexStr = arrayAccessMatch[2];
-
-          const taintedIndices = taintedArrayElements.get(arrayName);
-          if (taintedIndices) {
-            const isTainted = taintedIndices.has(indexStr) || taintedIndices.has('*');
-
-            if (isTainted) {
-              const source = sources[0];
-              if (source) {
-                flows.push({
-                  source_line: source.line,
-                  sink_line: sink.line,
-                  source_type: source.type,
-                  sink_type: sink.type,
-                  path: [
-                    { variable: arrayName, line: source.line, type: 'source' as const },
-                    { variable: `${arrayName}[${indexStr}]`, line: sink.line, type: 'sink' as const },
-                  ],
-                  confidence: 0.85,
-                  sanitized: false,
-                });
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-
-  return flows;
-}
-
-/**
- * Detect direct method parameter to sink flows.
- * This handles cases where a tainted method parameter is directly used in a sink
- * without intermediate variable assignments (which DFG chains might miss).
- */
-function detectParameterSinkFlows(
-  types: CircleIR['types'],
-  calls: CircleIR['calls'],
-  sources: CircleIR['taint']['sources'],
-  sinks: CircleIR['taint']['sinks'],
-  unreachableLines: Set<number>
-): CircleIR['taint']['flows'] {
-  const flows: CircleIR['taint']['flows'] = [];
-
-  // Build a map of method name -> parameter sources
-  const paramSourcesByMethod = new Map<string, Map<string, CircleIR['taint']['sources'][0]>>();
-  for (const source of sources) {
-    if (source.type === 'interprocedural_param') {
-      // Extract method and param name from location like "String paramName in methodName"
-      const match = source.location.match(/(\S+)\s+(\S+)\s+in\s+(\S+)/);
-      if (match) {
-        const paramName = match[2];
-        const methodName = match[3];
-        let methodParams = paramSourcesByMethod.get(methodName);
-        if (!methodParams) {
-          methodParams = new Map();
-          paramSourcesByMethod.set(methodName, methodParams);
-        }
-        methodParams.set(paramName, source);
-      }
-    }
-  }
-
-  if (paramSourcesByMethod.size === 0) {
-    return flows;
-  }
-
-  // Build map of calls by line
-  const callsByLine = new Map<number, typeof calls>();
-  for (const call of calls) {
-    const existing = callsByLine.get(call.location.line) ?? [];
-    existing.push(call);
-    callsByLine.set(call.location.line, existing);
-  }
-
-  // For each sink, check if it uses a tainted parameter directly
-  for (const sink of sinks) {
-    if (unreachableLines.has(sink.line)) {
-      continue;
-    }
-
-    const callsAtSink = callsByLine.get(sink.line) ?? [];
-
-    for (const call of callsAtSink) {
-      const methodName = call.in_method;
-      if (!methodName) continue;
-
-      const methodParamSources = paramSourcesByMethod.get(methodName);
-      if (!methodParamSources) continue;
-
-      // Check if any argument is a tainted parameter
-      for (const arg of call.arguments) {
-        if (arg.variable) {
-          const paramSource = methodParamSources.get(arg.variable);
-          if (paramSource) {
-            // Found a direct parameter-to-sink flow
-            // Check if we already have this flow
-            const exists = flows.some(
-              f => f.source_line === paramSource.line && f.sink_line === sink.line
-            );
-            if (!exists) {
-              flows.push({
-                source_line: paramSource.line,
-                sink_line: sink.line,
-                source_type: paramSource.type,
-                sink_type: sink.type,
-                path: [
-                  { variable: arg.variable, line: paramSource.line, type: 'source' as const },
-                  { variable: arg.variable, line: sink.line, type: 'sink' as const },
-                ],
-                confidence: 0.75, // Lower confidence for interprocedural
-                sanitized: false,
-              });
-            }
-          }
-        }
-      }
-    }
-  }
-
-  return flows;
-}
+// ---------------------------------------------------------------------------
+// Lifecycle
+// ---------------------------------------------------------------------------
 
 /**
  * Check if the analyzer is initialized.
@@ -2163,3 +548,81 @@ export function isAnalyzerInitialized(): boolean {
 export function resetAnalyzer(): void {
   initialized = false;
 }
+
+// ---------------------------------------------------------------------------
+// Project-level analysis (multi-file)
+// ---------------------------------------------------------------------------
+
+/**
+ * Analyze a set of files as a project, finding cross-file taint flows.
+ *
+ * Runs single-file `analyze()` on each file in order, then uses
+ * `ProjectGraph` + `CrossFileResolver` to surface flows that cross file
+ * boundaries.  The per-file `CircleIR` outputs are preserved unchanged in
+ * `ProjectAnalysis.files`.
+ *
+ * `findings` is always empty — it requires LLM enrichment which is out of
+ * scope for this library (see CLAUDE.md and SPEC.md section 11).
+ */
+export async function analyzeProject(
+  files: Array<{ code: string; filePath: string; language: SupportedLanguage }>,
+  options: AnalyzerOptions = {},
+): Promise<ProjectAnalysis> {
+  const fileAnalyses: Array<{ file: string; analysis: CircleIR }> = [];
+  const projectGraph = new ProjectGraph();
+  const sourceLinesByFile = new Map<string, string[]>();
+
+  // 1. Per-file analysis
+  for (const { code, filePath, language } of files) {
+    const ir = await analyze(code, filePath, language, options);
+    fileAnalyses.push({ file: filePath, analysis: ir });
+    projectGraph.addFile(filePath, new CodeGraph(ir));
+    sourceLinesByFile.set(filePath, code.split('\n'));
+  }
+
+  // 2. Cross-file analysis
+  const crossFileResult = new CrossFilePass().run(projectGraph, sourceLinesByFile);
+
+  // 3. Assemble ProjectMeta
+  const filePaths = files.map(f => f.filePath);
+  const totalLoc  = fileAnalyses.reduce((sum, f) => sum + (f.analysis.meta.loc ?? 0), 0);
+  const meta: ProjectMeta = {
+    name:         deriveProjectName(filePaths),
+    root:         deriveProjectRoot(filePaths),
+    language:     files[0]?.language ?? 'java',
+    total_files:  files.length,
+    total_loc:    totalLoc,
+    analyzed_at:  new Date().toISOString(),
+  };
+
+  return {
+    meta,
+    files: fileAnalyses,
+    type_hierarchy:  crossFileResult.typeHierarchy,
+    cross_file_calls: crossFileResult.crossFileCalls,
+    taint_paths:     crossFileResult.taintPaths,
+    findings: [],
+  };
+}
+
+/** Derive a project name from the common root directory of the file paths. */
+function deriveProjectName(paths: string[]): string {
+  if (paths.length === 0) return 'unknown';
+  const root = deriveProjectRoot(paths);
+  return root.split('/').filter(Boolean).pop() ?? 'unknown';
+}
+
+/** Derive the common ancestor directory from a list of file paths. */
+function deriveProjectRoot(paths: string[]): string {
+  if (paths.length === 0) return '/';
+  const segments = paths[0].split('/');
+  let common = segments.slice(0, -1); // strip filename
+  for (const p of paths.slice(1)) {
+    const segs = p.split('/');
+    common = common.filter((seg, i) => segs[i] === seg);
+  }
+  return common.join('/') || '/';
+}
+
+// Re-export isFalsePositive for consumers that use it directly
+export { isFalsePositive };

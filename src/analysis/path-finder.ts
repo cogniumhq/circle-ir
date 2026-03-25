@@ -16,6 +16,7 @@ import type {
   SourceType,
   SinkType,
 } from '../types/index.js';
+import { CodeGraph } from '../graph/index.js';
 
 /**
  * A single hop in the taint path
@@ -84,82 +85,59 @@ export interface PathFinderConfig {
  * PathFinder - Enumerate taint paths through the DFG
  */
 export class PathFinder {
-  private dfg: DFG;
-  private calls: CallInfo[];
+  private graph: CodeGraph;
   private sources: TaintSource[];
   private sinks: TaintSink[];
   private sanitizers: TaintSanitizer[];
   private config: Required<PathFinderConfig>;
-
-  // Lookup maps
-  private defById: Map<number, DFGDef> = new Map();
-  private defsByLine: Map<number, DFGDef[]> = new Map();
-  private defsByVar: Map<string, DFGDef[]> = new Map();
-  private usesByLine: Map<number, DFGUse[]> = new Map();
-  private usesByDefId: Map<number, DFGUse[]> = new Map();
-  private callsByLine: Map<number, CallInfo[]> = new Map();
-  private sanitizerLines: Set<number> = new Set();
+  private sanitizerLines: Set<number>;
 
   constructor(
-    dfg: DFG,
-    calls: CallInfo[],
-    sources: TaintSource[],
-    sinks: TaintSink[],
-    sanitizers: TaintSanitizer[],
+    graphOrDfg: CodeGraph | DFG,
+    callsOrSources: CallInfo[] | TaintSource[],
+    sourcesOrSinks: TaintSource[] | TaintSink[],
+    sinksOrSanitizers: TaintSink[] | TaintSanitizer[],
+    sanitizersOrConfig?: TaintSanitizer[] | PathFinderConfig,
     config: PathFinderConfig = {}
   ) {
-    this.dfg = dfg;
-    this.calls = calls;
-    this.sources = sources;
-    this.sinks = sinks;
-    this.sanitizers = sanitizers;
-    this.config = {
-      maxPathLength: config.maxPathLength ?? 50,
-      maxPathsPerSink: config.maxPathsPerSink ?? 10,
-      includeCode: config.includeCode ?? false,
-      sourceLines: config.sourceLines ?? [],
-    };
-
-    this.buildLookupMaps();
-  }
-
-  /**
-   * Build all lookup maps for efficient querying
-   */
-  private buildLookupMaps(): void {
-    for (const def of this.dfg.defs) {
-      this.defById.set(def.id, def);
-
-      const byLine = this.defsByLine.get(def.line) ?? [];
-      byLine.push(def);
-      this.defsByLine.set(def.line, byLine);
-
-      const byVar = this.defsByVar.get(def.variable) ?? [];
-      byVar.push(def);
-      this.defsByVar.set(def.variable, byVar);
+    if (graphOrDfg instanceof CodeGraph) {
+      // New signature: (graph, sources, sinks, sanitizers, config?)
+      this.graph = graphOrDfg;
+      this.sources = callsOrSources as TaintSource[];
+      this.sinks = sourcesOrSinks as TaintSink[];
+      this.sanitizers = sinksOrSanitizers as TaintSanitizer[];
+      const cfg = sanitizersOrConfig as PathFinderConfig | undefined;
+      this.config = {
+        maxPathLength: cfg?.maxPathLength ?? 50,
+        maxPathsPerSink: cfg?.maxPathsPerSink ?? 10,
+        includeCode: cfg?.includeCode ?? false,
+        sourceLines: cfg?.sourceLines ?? [],
+      };
+    } else {
+      // Legacy signature: (dfg, calls, sources, sinks, sanitizers?, config?)
+      const dfg = graphOrDfg as DFG;
+      const calls = callsOrSources as CallInfo[];
+      const sources = sourcesOrSinks as TaintSource[];
+      const sinks = sinksOrSanitizers as TaintSink[];
+      const sanitizers = (sanitizersOrConfig as TaintSanitizer[] | undefined) ?? [];
+      this.graph = new CodeGraph({
+        meta: { circle_ir: '3.0', file: '', language: 'java', loc: 0, hash: '' },
+        types: [], calls, cfg: { blocks: [], edges: [] }, dfg,
+        taint: { sources: [], sinks: [], sanitizers },
+        imports: [], exports: [], unresolved: [], enriched: {},
+      });
+      this.sources = sources;
+      this.sinks = sinks;
+      this.sanitizers = sanitizers;
+      this.config = {
+        maxPathLength: config.maxPathLength ?? 50,
+        maxPathsPerSink: config.maxPathsPerSink ?? 10,
+        includeCode: config.includeCode ?? false,
+        sourceLines: config.sourceLines ?? [],
+      };
     }
 
-    for (const use of this.dfg.uses) {
-      const byLine = this.usesByLine.get(use.line) ?? [];
-      byLine.push(use);
-      this.usesByLine.set(use.line, byLine);
-
-      if (use.def_id !== null) {
-        const byDefId = this.usesByDefId.get(use.def_id) ?? [];
-        byDefId.push(use);
-        this.usesByDefId.set(use.def_id, byDefId);
-      }
-    }
-
-    for (const call of this.calls) {
-      const byLine = this.callsByLine.get(call.location.line) ?? [];
-      byLine.push(call);
-      this.callsByLine.set(call.location.line, byLine);
-    }
-
-    for (const sanitizer of this.sanitizers) {
-      this.sanitizerLines.add(sanitizer.line);
-    }
+    this.sanitizerLines = new Set(this.sanitizers.map(s => s.line));
   }
 
   /**
@@ -171,7 +149,7 @@ export class PathFinder {
 
     for (const source of this.sources) {
       // Find variable defined at source line
-      const sourceDefs = this.defsByLine.get(source.line) ?? [];
+      const sourceDefs = this.graph.defsAtLine(source.line);
 
       for (const sourceDef of sourceDefs) {
         // Find paths from this source to all reachable sinks
@@ -258,7 +236,7 @@ export class PathFinder {
             code: this.getCodeAtLine(sink.line),
           };
 
-          const call = this.callsByLine.get(sink.line)?.[0];
+          const call = this.graph.callsAtLine(sink.line)[0];
 
           paths.push({
             id: `path-${startPathId + paths.length}`,
@@ -286,7 +264,7 @@ export class PathFinder {
       }
 
       // Find next hops via uses of current definition
-      const uses = this.usesByDefId.get(state.currentDef.id) ?? [];
+      const uses = this.graph.usesOfDef(state.currentDef.id);
 
       for (const use of uses) {
         // Check for sanitizer at this line
@@ -299,7 +277,7 @@ export class PathFinder {
         }
 
         // Find definitions at the use line (assignments)
-        const nextDefs = this.defsByLine.get(use.line) ?? [];
+        const nextDefs = this.graph.defsAtLine(use.line);
 
         for (const nextDef of nextDefs) {
           if (state.visited.has(nextDef.id)) continue;
@@ -317,7 +295,7 @@ export class PathFinder {
         }
 
         // Also follow to same variable uses at later lines (implicit flow)
-        const laterDefs = (this.defsByVar.get(use.variable) ?? [])
+        const laterDefs = (this.graph.defsByVar.get(use.variable) ?? [])
           .filter(d => d.line > use.line && !state.visited.has(d.id));
 
         for (const laterDef of laterDefs.slice(0, 3)) {  // Limit branching
@@ -350,16 +328,14 @@ export class PathFinder {
    */
   private reachesSink(def: DFGDef, sink: TaintSink): boolean {
     // Check if the variable is used at the sink line
-    const uses = this.usesByLine.get(sink.line) ?? [];
-    for (const use of uses) {
+    for (const use of this.graph.usesAtLine(sink.line)) {
       if (use.variable === def.variable || use.def_id === def.id) {
         return true;
       }
     }
 
     // Check if any call at the sink line uses this variable
-    const calls = this.callsByLine.get(sink.line) ?? [];
-    for (const call of calls) {
+    for (const call of this.graph.callsAtLine(sink.line)) {
       for (const arg of call.arguments) {
         if (arg.variable === def.variable) {
           return true;
@@ -374,7 +350,7 @@ export class PathFinder {
    * Create a hop description between two definitions
    */
   private createHop(fromDef: DFGDef, toDef: DFGDef, use: DFGUse): TaintHop {
-    const call = this.callsByLine.get(toDef.line)?.[0];
+    const call = this.graph.callsAtLine(toDef.line)[0];
 
     let operation: TaintHop['operation'] = 'assign';
     let description = `Assigned to ${toDef.variable}`;

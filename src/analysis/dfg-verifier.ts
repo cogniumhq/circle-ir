@@ -16,6 +16,7 @@ import type {
   TaintSink,
   TaintSanitizer,
 } from '../types/index.js';
+import { CodeGraph } from '../graph/index.js';
 
 /**
  * Result of DFG verification
@@ -61,87 +62,47 @@ export interface VerifierConfig {
  * DFGVerifier - Verifies taint flows using def-use chains
  */
 export class DFGVerifier {
-  private dfg: DFG;
-  private calls: CallInfo[];
+  private graph: CodeGraph;
   private sanitizers: TaintSanitizer[];
   private config: Required<VerifierConfig>;
-
-  // Lookup maps
-  private defById: Map<number, DFGDef> = new Map();
-  private defsByLine: Map<number, DFGDef[]> = new Map();
-  private defsByVar: Map<string, DFGDef[]> = new Map();
-  private usesByDefId: Map<number, DFGUse[]> = new Map();
-  private usesByLine: Map<number, DFGUse[]> = new Map();
-  private callsByLine: Map<number, CallInfo[]> = new Map();
-  private sanitizerLines: Set<number> = new Set();
-
-  // Chain lookup for faster traversal
-  private chainsByFromDef: Map<number, DFGChain[]> = new Map();
+  private sanitizerLines: Set<number>;
 
   constructor(
-    dfg: DFG,
-    calls: CallInfo[],
-    sanitizers: TaintSanitizer[],
+    graphOrDfg: CodeGraph | DFG,
+    callsOrSanitizers: CallInfo[] | TaintSanitizer[],
+    sanitizersOrConfig?: TaintSanitizer[] | VerifierConfig,
     config: VerifierConfig = {}
   ) {
-    this.dfg = dfg;
-    this.calls = calls;
-    this.sanitizers = sanitizers;
-    this.config = {
-      maxDepth: config.maxDepth ?? 30,
-      requireDirectFlow: config.requireDirectFlow ?? false,
-      allowFieldFlows: config.allowFieldFlows ?? true,
-    };
-
-    this.buildLookupMaps();
-  }
-
-  /**
-   * Build lookup maps for efficient querying
-   */
-  private buildLookupMaps(): void {
-    for (const def of this.dfg.defs) {
-      this.defById.set(def.id, def);
-
-      const byLine = this.defsByLine.get(def.line) ?? [];
-      byLine.push(def);
-      this.defsByLine.set(def.line, byLine);
-
-      const byVar = this.defsByVar.get(def.variable) ?? [];
-      byVar.push(def);
-      this.defsByVar.set(def.variable, byVar);
+    // Support both new CodeGraph signature and legacy (dfg, calls, sanitizers, config) signature
+    if (graphOrDfg instanceof CodeGraph) {
+      this.graph = graphOrDfg;
+      this.sanitizers = callsOrSanitizers as TaintSanitizer[];
+      const cfg = sanitizersOrConfig as VerifierConfig | undefined;
+      this.config = {
+        maxDepth: cfg?.maxDepth ?? 30,
+        requireDirectFlow: cfg?.requireDirectFlow ?? false,
+        allowFieldFlows: cfg?.allowFieldFlows ?? true,
+      };
+    } else {
+      // Legacy: (dfg, calls, sanitizers, config)
+      const dfg = graphOrDfg as DFG;
+      const calls = callsOrSanitizers as CallInfo[];
+      const sanitizers = sanitizersOrConfig as TaintSanitizer[] ?? [];
+      this.graph = new CodeGraph({
+        meta: { circle_ir: '3.0', file: '', language: 'java', loc: 0, hash: '' },
+        types: [], calls, cfg: { blocks: [], edges: [] }, dfg,
+        taint: { sources: [], sinks: [], sanitizers },
+        imports: [], exports: [], unresolved: [], enriched: {},
+      });
+      this.sanitizers = sanitizers;
+      this.config = {
+        maxDepth: config.maxDepth ?? 30,
+        requireDirectFlow: config.requireDirectFlow ?? false,
+        allowFieldFlows: config.allowFieldFlows ?? true,
+      };
     }
 
-    for (const use of this.dfg.uses) {
-      const byLine = this.usesByLine.get(use.line) ?? [];
-      byLine.push(use);
-      this.usesByLine.set(use.line, byLine);
-
-      if (use.def_id !== null) {
-        const byDefId = this.usesByDefId.get(use.def_id) ?? [];
-        byDefId.push(use);
-        this.usesByDefId.set(use.def_id, byDefId);
-      }
-    }
-
-    for (const call of this.calls) {
-      const byLine = this.callsByLine.get(call.location.line) ?? [];
-      byLine.push(call);
-      this.callsByLine.set(call.location.line, byLine);
-    }
-
-    for (const sanitizer of this.sanitizers) {
-      this.sanitizerLines.add(sanitizer.line);
-    }
-
-    // Build chain lookup
-    if (this.dfg.chains) {
-      for (const chain of this.dfg.chains) {
-        const byFromDef = this.chainsByFromDef.get(chain.from_def) ?? [];
-        byFromDef.push(chain);
-        this.chainsByFromDef.set(chain.from_def, byFromDef);
-      }
-    }
+    this.sanitizerLines = new Set(this.sanitizers.map(s => s.line));
   }
 
   /**
@@ -149,7 +110,7 @@ export class DFGVerifier {
    */
   verify(source: TaintSource, sink: TaintSink): VerificationResult {
     // Find definitions at the source line
-    const sourceDefs = this.defsByLine.get(source.line) ?? [];
+    const sourceDefs = this.graph.defsAtLine(source.line);
 
     if (sourceDefs.length === 0) {
       return {
@@ -246,9 +207,9 @@ export class DFGVerifier {
       }
 
       // Explore via def-use chains (if available)
-      const chains = this.chainsByFromDef.get(state.def.id) ?? [];
+      const chains = this.graph.chainsFrom(state.def.id);
       for (const chain of chains) {
-        const nextDef = this.defById.get(chain.to_def);
+        const nextDef = this.graph.defById.get(chain.to_def);
         if (!nextDef || state.visited.has(nextDef.id)) continue;
 
         const step: VerificationStep = {
@@ -270,10 +231,10 @@ export class DFGVerifier {
       }
 
       // Explore via uses of the current definition
-      const uses = this.usesByDefId.get(state.def.id) ?? [];
+      const uses = this.graph.usesOfDef(state.def.id);
       for (const use of uses) {
         // Find definitions at the use line
-        const nextDefs = this.defsByLine.get(use.line) ?? [];
+        const nextDefs = this.graph.defsAtLine(use.line);
 
         for (const nextDef of nextDefs) {
           if (state.visited.has(nextDef.id)) continue;
@@ -305,8 +266,8 @@ export class DFGVerifier {
       }
 
       // Explore same-variable definitions at later lines
-      const laterDefs = (this.defsByVar.get(state.def.variable) ?? [])
-        .filter(d => d.line > state.def.line && d.line <= sink.line && !state.visited.has(d.id))
+      const laterDefs = this.graph.laterDefsOfVar(state.def.variable, state.def.line, sink.line)
+        .filter(d => !state.visited.has(d.id))
         .slice(0, 5);  // Limit branching
 
       for (const nextDef of laterDefs) {
@@ -337,16 +298,14 @@ export class DFGVerifier {
    */
   private reachesSink(def: DFGDef, sink: TaintSink): boolean {
     // Check uses at sink line
-    const uses = this.usesByLine.get(sink.line) ?? [];
-    for (const use of uses) {
+    for (const use of this.graph.usesAtLine(sink.line)) {
       if (use.variable === def.variable || use.def_id === def.id) {
         return true;
       }
     }
 
     // Check call arguments at sink line
-    const calls = this.callsByLine.get(sink.line) ?? [];
-    for (const call of calls) {
+    for (const call of this.graph.callsAtLine(sink.line)) {
       for (const arg of call.arguments) {
         if (arg.variable === def.variable) {
           return true;
@@ -356,9 +315,7 @@ export class DFGVerifier {
 
     // Check if definition is at or before sink line with same variable
     if (def.line <= sink.line) {
-      const laterDefs = (this.defsByVar.get(def.variable) ?? [])
-        .filter(d => d.line > def.line && d.line <= sink.line);
-
+      const laterDefs = this.graph.laterDefsOfVar(def.variable, def.line, sink.line);
       // If no redefinition between def and sink, it reaches
       if (laterDefs.length === 0) {
         return true;
@@ -377,7 +334,7 @@ export class DFGVerifier {
     useLine: number
   ): VerificationStep['flowType'] {
     // Check for call at the line
-    const calls = this.callsByLine.get(useLine) ?? [];
+    const calls = this.graph.callsAtLine(useLine);
     if (calls.length > 0) {
       // If the variable changed, it's a return assignment
       if (fromDef.variable !== toDef.variable) {

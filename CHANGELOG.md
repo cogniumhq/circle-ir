@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`analyzeProject()` — multi-file analysis API**: New public function that accepts an array of `{ code, filePath, language }` entries, runs single-file analysis on each, then uses `CrossFileResolver` to find cross-file taint flows. Returns `ProjectAnalysis` with `files`, `type_hierarchy`, `cross_file_calls`, `taint_paths`, and `findings` (empty; LLM enrichment is out of scope).
+- **`ProjectGraph`** (`src/graph/project-graph.ts`): Wraps multiple `CodeGraph` instances. Provides lazily-built `SymbolTable`, `TypeHierarchyResolver`, and `CrossFileResolver` — all three rebuilt together on the first access after any `addFile()` call.
+- **`CrossFilePass`** (`src/analysis/passes/cross-file-pass.ts`): Project-level pass that maps `CrossFileTaintFlow[]` → `TaintPath[]`, surfaces resolved inter-file calls, and exports the full `TypeHierarchy`.
+- **`ProjectGraph` exported** from `src/graph/index.ts`.
+
+### Changed
+
+- **`analyzer.ts` decomposed into 6 AnalysisPass modules** (behavior unchanged, zero test regressions):
+  - `TaintMatcherPass` — config-based source/sink extraction + plugin merge
+  - `ConstantPropagationPass` — dead-code detection, symbol table, field taint
+  - `LanguageSourcesPass` — JS/Python language-specific sources and sinks
+  - `SinkFilterPass` — four-stage false-positive elimination
+  - `TaintPropagationPass` — DFG-based flow verification + array/collection/param supplements
+  - `InterproceduralPass` — cross-method taint propagation (both scenarios)
+- **`analyzer.ts`** reduced from ~2100 lines to ~610 lines; `analyze()` is now a 40-line orchestrator.
+- **`CodeGraph`** (`src/graph/code-graph.ts`): Introduced lazy Map indexes (defById, defsByLine, defsByVar, usesByLine, usesByDefId, chainsByFromDef, callsByLine, callsByMethod, sanitizersByLine, methodsByName) built once per analysis. Eliminates the duplicate `buildLookupMaps()` blocks that previously existed independently in `taint-propagation.ts`, `dfg-verifier.ts`, `path-finder.ts`, and `interprocedural.ts`.
+- **`interprocedural.ts`**: O(N) `findUseAtLine()` scan (called inside a hot loop) replaced with `graph.usesAtLine(line).find(...)`.
+
 ## [3.8.4] - 2026-03-24
 
 ### Fixed

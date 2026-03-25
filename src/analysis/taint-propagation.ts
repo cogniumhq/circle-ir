@@ -16,6 +16,7 @@ import type {
   TaintSanitizer,
   SinkType,
 } from '../types/index.js';
+import { CodeGraph } from '../graph/index.js';
 
 /**
  * Represents a tainted variable at a specific point in the code.
@@ -62,52 +63,56 @@ export interface TaintPropagationResult {
 
 /**
  * Propagate taint through the dataflow graph.
+ *
+ * Accepts either a CodeGraph (preferred) or the legacy (dfg, calls, ...) signature
+ * for backward compatibility with existing call sites and tests.
  */
 export function propagateTaint(
-  dfg: DFG,
-  calls: CallInfo[],
-  sources: TaintSource[],
-  sinks: TaintSink[],
-  sanitizers: TaintSanitizer[]
+  graphOrDfg: CodeGraph | DFG,
+  callsOrSources: CallInfo[] | TaintSource[],
+  sourcesOrSinks: TaintSource[] | TaintSink[],
+  sinksOrSanitizers: TaintSink[] | TaintSanitizer[],
+  sanitizersArg?: TaintSanitizer[]
 ): TaintPropagationResult {
+  let graph: CodeGraph;
+  let sources: TaintSource[];
+  let sinks: TaintSink[];
+  let sanitizers: TaintSanitizer[];
+
+  if (graphOrDfg instanceof CodeGraph) {
+    // New signature: (graph, sources, sinks, sanitizers)
+    graph = graphOrDfg;
+    sources = callsOrSources as TaintSource[];
+    sinks = sourcesOrSinks as TaintSink[];
+    sanitizers = sinksOrSanitizers as TaintSanitizer[];
+  } else {
+    // Legacy signature: (dfg, calls, sources, sinks, sanitizers)
+    const dfg = graphOrDfg as DFG;
+    const calls = callsOrSources as CallInfo[];
+    sources = sourcesOrSinks as TaintSource[];
+    sinks = sinksOrSanitizers as TaintSink[];
+    sanitizers = sanitizersArg ?? [];
+    graph = new CodeGraph({
+      meta: { circle_ir: '3.0', file: '', language: 'java', loc: 0, hash: '' },
+      types: [], calls, cfg: { blocks: [], edges: [] }, dfg,
+      taint: { sources: [], sinks: [], sanitizers },
+      imports: [], exports: [], unresolved: [], enriched: {},
+    });
+  }
+
   const taintedVars: TaintedVariable[] = [];
   const flows: TaintFlow[] = [];
   const reachableSinks = new Map<TaintSink, TaintSource[]>();
 
-  // Build lookup maps
-  const defById = new Map<number, DFGDef>();
-  const defsByLine = new Map<number, DFGDef[]>();
-  const usesByLine = new Map<number, DFGUse[]>();
-  const callsByLine = new Map<number, CallInfo[]>();
-  const sanitizersByLine = new Map<number, TaintSanitizer[]>();
-
-  for (const def of dfg.defs) {
-    defById.set(def.id, def);
-    const existing = defsByLine.get(def.line) ?? [];
-    existing.push(def);
-    defsByLine.set(def.line, existing);
-  }
-
-  for (const use of dfg.uses) {
-    const existing = usesByLine.get(use.line) ?? [];
-    existing.push(use);
-    usesByLine.set(use.line, existing);
-  }
-
-  for (const call of calls) {
-    const existing = callsByLine.get(call.location.line) ?? [];
-    existing.push(call);
-    callsByLine.set(call.location.line, existing);
-  }
-
-  for (const san of sanitizers) {
-    const existing = sanitizersByLine.get(san.line) ?? [];
-    existing.push(san);
-    sanitizersByLine.set(san.line, existing);
-  }
+  // Use pre-computed indexes from CodeGraph — no local map building needed
+  const defsByLine = graph.defsByLine;
+  const usesByLine = graph.usesByLine;
+  const callsByLine = graph.callsByLine;
+  const sanitizersByLine = graph.sanitizersByLine;
+  const defById = graph.defById;
 
   // Step 1: Identify initial tainted definitions (from sources)
-  const rawInitialTaint = findInitialTaint(sources, dfg, callsByLine, defsByLine);
+  const rawInitialTaint = findInitialTaint(sources, callsByLine, defsByLine);
 
   // Filter variables added via the "next-line" heuristic that are actually the
   // result of a sanitizer call.  The source variable itself (tv.line ===
@@ -122,7 +127,7 @@ export function propagateTaint(
   // Step 2: Propagate taint through def-use chains
   const propagatedTaint = propagateThroughChains(
     initialTaint,
-    dfg.chains ?? [],
+    graph.chainsByFromDef,
     defById,
     sanitizersByLine
   );
@@ -167,9 +172,7 @@ export function propagateTaint(
                       const flow = buildTaintFlow(
                         source,
                         sink,
-                        taintInfo,
-                        dfg,
-                        defById
+                        taintInfo
                       );
                       flows.push(flow);
 
@@ -198,7 +201,6 @@ export function propagateTaint(
  */
 function findInitialTaint(
   sources: TaintSource[],
-  dfg: DFG,
   callsByLine: Map<number, CallInfo[]>,
   defsByLine: Map<number, DFGDef[]>
 ): TaintedVariable[] {
@@ -242,10 +244,12 @@ function findInitialTaint(
 
 /**
  * Propagate taint through def-use chains.
+ * Accepts a pre-computed chainsByFromDef index (from CodeGraph) — no internal
+ * adjacency list building needed.
  */
 function propagateThroughChains(
   initialTaint: TaintedVariable[],
-  chains: DFGChain[],
+  chainsByFromDef: Map<number, DFGChain[]>,
   defById: Map<number, DFGDef>,
   sanitizersByLine: Map<number, TaintSanitizer[]>
 ): TaintedVariable[] {
@@ -255,14 +259,6 @@ function propagateThroughChains(
 
   for (const t of initialTaint) {
     taintInfoByDefId.set(t.defId, t);
-  }
-
-  // Build adjacency list for chains
-  const chainsByFromDef = new Map<number, DFGChain[]>();
-  for (const chain of chains) {
-    const existing = chainsByFromDef.get(chain.from_def) ?? [];
-    existing.push(chain);
-    chainsByFromDef.set(chain.from_def, existing);
   }
 
   // BFS to propagate taint
@@ -381,9 +377,7 @@ function checkSanitized(
 function buildTaintFlow(
   source: TaintSource,
   sink: TaintSink,
-  taintInfo: TaintedVariable,
-  dfg: DFG,
-  defById: Map<number, DFGDef>
+  taintInfo: TaintedVariable
 ): TaintFlow {
   const path: TaintFlowStep[] = [];
 
