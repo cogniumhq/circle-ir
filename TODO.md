@@ -12,7 +12,7 @@ Working plan and task tracker for the circle-ir SAST library.
 | Phase | Status | Focus |
 |-------|--------|-------|
 | 0 — Architecture foundation | ✅ Complete | CodeGraph, AnalysisPipeline, ProjectGraph, taxonomy types |
-| 1 — High-impact SAST passes | 🔜 Next | 17 new passes using existing + 2 new cheap graphs |
+| 1 — High-impact SAST passes | 🔄 In Progress | Group 1 done (5 passes); Groups 2-4 pending |
 | 2 — Metrics engine | Pending | MetricRunner, 38 metrics, `cognium metrics` command |
 | 4 — Advanced graphs + passes | Pending | Dominator tree, exception flow, type hierarchy wired |
 
@@ -23,7 +23,7 @@ Working plan and task tracker for the circle-ir SAST library.
 
 ## Phase 0 — Architecture Foundation ✅ Complete
 
-All items complete. 788/788 tests passing.
+All items complete. 857/857 tests passing.
 
 - [x] **CodeGraph** (`src/graph/code-graph.ts`) — lazy Map indexes; `loopBodies()` via CFG back-edges
 - [x] **AnalysisPass interface + AnalysisPipeline** — 6 passes, `category: PassCategory`, `context.addFinding()`, `PipelineRunResult { results, findings }`
@@ -32,19 +32,19 @@ All items complete. 788/788 tests passing.
 
 ---
 
-## Phase 1 — High-Impact SAST Passes 🔜 Next
+## Phase 1 — High-Impact SAST Passes 🔄 In Progress
 
 **Goal:** Every developer sees value on first scan. All passes use existing graphs or one new cheap graph.
 
-### Group 1: 5 quick wins (existing graphs only, ~600 LOC)
+### Group 1: 5 quick wins (existing graphs only) ✅ Done (v3.9.1)
 
 Passes that need only `ast` and/or `cfg` — no new graph required.
 
-- [ ] **#22 `dead-code`** (CWE-561, warning) — CFG block unreachable from entry
-- [ ] **#24 `missing-await`** (CWE-252, warning) — async call without `await`, Promise discarded
-- [ ] **#45 `n-plus-one`** (CWE-1049, warning) — DB/API call inside `loopBodies()`
-- [ ] **#35 `missing-public-doc`** (—, note) — exported function/type with no doc block
-- [ ] **#36 `todo-in-prod`** (—, note) — TODO/FIXME/HACK in non-test file
+- [x] **#22 `dead-code`** (CWE-561, warning) — CFG block unreachable from entry
+- [x] **#24 `missing-await`** (CWE-252, warning) — async call without `await`, Promise discarded
+- [x] **#45 `n-plus-one`** (CWE-1049, warning) — DB/API call inside `loopBodies()`
+- [x] **#35 `missing-public-doc`** (—, note) — exported function/type with no doc block
+- [x] **#36 `todo-in-prod`** (—, note) — TODO/FIXME/HACK in non-test file
 
 ### Group 2: 5 reliability passes (dfg + cfg, ~950 LOC)
 
@@ -200,7 +200,6 @@ Current coverage: ~77%. Target: ≥75% (met).
 
 ## Code Quality
 
-- [ ] **P1**: Add `*.tgz` to .gitignore (npm pack artifacts)
 - [ ] **P2**: Remove or document `advisory-db.json` (1.1 MB file — purpose unclear)
 
 ---
