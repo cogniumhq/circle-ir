@@ -32,6 +32,7 @@ export interface SinkFilterResult {
 
 export class SinkFilterPass implements AnalysisPass<SinkFilterResult> {
   readonly name = 'sink-filter';
+  readonly category = 'security' as const;
 
   run(ctx: PassContext): SinkFilterResult {
     const { graph, language } = ctx;

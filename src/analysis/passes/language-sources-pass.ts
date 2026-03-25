@@ -112,6 +112,7 @@ export interface LanguageSourcesResult {
 
 export class LanguageSourcesPass implements AnalysisPass<LanguageSourcesResult> {
   readonly name = 'language-sources';
+  readonly category = 'security' as const;
 
   run(ctx: PassContext): LanguageSourcesResult {
     const { graph, code, language } = ctx;

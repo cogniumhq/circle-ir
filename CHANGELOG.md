@@ -7,15 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.9.1] - 2026-03-25
+
 ### Added
 
+- **`analyzeProject` is now part of the public API** — exported from the top-level package entry point (`src/index.ts`). Previously the function existed in `src/analyzer.ts` but was not re-exported, making it inaccessible to downstream consumers.
+
+## [3.9.0] - 2026-03-25
+
+### Added
+
+- **Phase 1 Group 1: five new analysis passes** — all emit `SastFinding[]` via `PassContext.addFinding()` and are wired into the 11-pass pipeline:
+  - **`DeadCodePass`** (`dead-code`, CWE-561, reliability) — BFS reachability on the CFG; unreachable non-entry/exit blocks with `start_line > 0` are reported as `warning` findings
+  - **`MissingAwaitPass`** (`missing-await`, CWE-252, reliability) — JS/TS only; 24-method curated set; flagged when call is not awaited, result is not assigned (no DFG def at line), and line is not a `return` statement
+  - **`NPlusOnePass`** (`n-plus-one`, CWE-1049, performance) — DB/HTTP calls inside CFG loop bodies (`loopBodies()`); two-tier confidence: HIGH_CONFIDENCE methods flagged regardless of receiver; MEDIUM_CONFIDENCE require a DB-like receiver (`prisma`, `mongoose`, `axios`, `db`, `conn`, `repo`, …)
+  - **`MissingPublicDocPass`** (`missing-public-doc`, maintainability) — checks for `/**` doc comment within 10 lines before declaration; language-specific public rules (Java: `public` modifier; JS/TS: not `private`/`protected`; Python: no `_` prefix); Python docstring detection; test files excluded
+  - **`TodoInProdPass`** (`todo-in-prod`, maintainability) — line-by-line regex scan for `TODO`/`FIXME`/`HACK`/`XXX` markers in comment context (`//`, `#`, `--`, `*`); `FIXME`/`HACK` → medium, `TODO`/`XXX` → low; test files excluded
 - **`analyzeProject()` — multi-file analysis API**: New public function that accepts an array of `{ code, filePath, language }` entries, runs single-file analysis on each, then uses `CrossFileResolver` to find cross-file taint flows. Returns `ProjectAnalysis` with `files`, `type_hierarchy`, `cross_file_calls`, `taint_paths`, and `findings` (empty; LLM enrichment is out of scope).
 - **`ProjectGraph`** (`src/graph/project-graph.ts`): Wraps multiple `CodeGraph` instances. Provides lazily-built `SymbolTable`, `TypeHierarchyResolver`, and `CrossFileResolver` — all three rebuilt together on the first access after any `addFile()` call.
 - **`CrossFilePass`** (`src/analysis/passes/cross-file-pass.ts`): Project-level pass that maps `CrossFileTaintFlow[]` → `TaintPath[]`, surfaces resolved inter-file calls, and exports the full `TypeHierarchy`.
 - **`ProjectGraph` exported** from `src/graph/index.ts`.
+- **SAST taxonomy types** (`src/types/index.ts`):
+  - `PassCategory` — ISO 25010 aligned: `security | reliability | performance | maintainability | architecture`
+  - `SarifLevel` — `error | warning | note | none`
+  - `SastFinding` — SARIF 2.1.0 aligned finding interface with CWE mapping, `level` (SarifLevel), `category` (PassCategory), `rule_id`, optional `fix` and `evidence`; no LLM fields
+  - `MetricCategory` — `complexity | size | coupling | inheritance | cohesion | documentation | duplication`
+  - `MetricValue` — standard metric names (CK suite: WMC/DIT/NOC/CBO/RFC/LCOM; Halstead: V/D/E/B; McCabe: v(G)) with ISO 25010 sub-characteristic alignment
+  - `FileMetrics` — per-file metric aggregation
+  - `CircleIR.findings?` — optional `SastFinding[]` populated by analysis passes
+  - `CircleIR.metrics?` — optional `FileMetrics` reserved for future metric passes
+- **`PassContext.addFinding()`** — analysis passes can emit `SastFinding` objects directly into the pipeline
+- **`PipelineRunResult`** — `AnalysisPipeline.run()` now returns `{ results: Map, findings: SastFinding[] }` instead of a bare Map; exported from `src/graph/index.ts`
+- **`CodeGraph.loopBodies()`** (`src/graph/code-graph.ts`) — returns `{ start_line, end_line }[]` for each loop body detected via CFG back-edges (`edge.type === 'back'`); used by the n-plus-one pass
+- **`docs/PASSES.md`** — canonical reference for all planned passes: number, `rule_id`, CWE, SARIF level, required graphs, implementation status; metric registry with 40+ metrics mapped to `MetricCategory` and ISO 25010 sub-characteristics
 
 ### Changed
 
+- **`AnalysisPass` interface** — added `category: PassCategory` field; all 6 existing security passes updated with `category = 'security'`
+- **`analyze()` pipeline** — extended from 6 to 11 passes; `DeadCodePass`, `MissingAwaitPass`, `NPlusOnePass`, `MissingPublicDocPass`, `TodoInProdPass` added after `InterproceduralPass`
 - **`analyzer.ts` decomposed into 6 AnalysisPass modules** (behavior unchanged, zero test regressions):
   - `TaintMatcherPass` — config-based source/sink extraction + plugin merge
   - `ConstantPropagationPass` — dead-code detection, symbol table, field taint
@@ -23,9 +52,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `SinkFilterPass` — four-stage false-positive elimination
   - `TaintPropagationPass` — DFG-based flow verification + array/collection/param supplements
   - `InterproceduralPass` — cross-method taint propagation (both scenarios)
-- **`analyzer.ts`** reduced from ~2100 lines to ~610 lines; `analyze()` is now a 40-line orchestrator.
-- **`CodeGraph`** (`src/graph/code-graph.ts`): Introduced lazy Map indexes (defById, defsByLine, defsByVar, usesByLine, usesByDefId, chainsByFromDef, callsByLine, callsByMethod, sanitizersByLine, methodsByName) built once per analysis. Eliminates the duplicate `buildLookupMaps()` blocks that previously existed independently in `taint-propagation.ts`, `dfg-verifier.ts`, `path-finder.ts`, and `interprocedural.ts`.
-- **`interprocedural.ts`**: O(N) `findUseAtLine()` scan (called inside a hot loop) replaced with `graph.usesAtLine(line).find(...)`.
+- **`analyzer.ts`** reduced from ~2100 lines to ~630 lines; `analyze()` is now a clean orchestrator
+- **`CodeGraph`** (`src/graph/code-graph.ts`): Introduced lazy Map indexes (defById, defsByLine, defsByVar, usesByLine, usesByDefId, chainsByFromDef, callsByLine, callsByMethod, sanitizersByLine, methodsByName, blockById) built once per analysis
+- **Test count**: 788 → 857 (69 new pass unit tests across 5 new test files)
 
 ## [3.8.4] - 2026-03-24
 
@@ -239,6 +268,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Per-index collection taint tracking
 - Language plugin architecture
 
+[3.9.0]: https://github.com/cogniumhq/circle-ir/releases/tag/v3.9.0
+[3.8.4]: https://github.com/cogniumhq/circle-ir/releases/tag/v3.8.4
 [3.8.3]: https://github.com/cogniumhq/circle-ir/releases/tag/v3.8.3
 [3.8.2]: https://github.com/cogniumhq/circle-ir/releases/tag/v3.8.2
 [3.8.1]: https://github.com/cogniumhq/circle-ir/releases/tag/v3.8.1

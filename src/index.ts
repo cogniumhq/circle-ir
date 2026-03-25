@@ -9,6 +9,7 @@ export {
   initAnalyzer,
   analyze,
   analyzeForAPI,
+  analyzeProject,
   isAnalyzerInitialized,
   resetAnalyzer,
   type AnalyzerOptions,
@@ -52,6 +53,14 @@ export type {
   SourceType,
   SinkType,
   Severity,
+
+  // SAST taxonomy types (Phase 1+)
+  PassCategory,
+  SarifLevel,
+  SastFinding,
+  MetricCategory,
+  MetricValue,
+  FileMetrics,
 
   // Project-level types
   ProjectAnalysis,

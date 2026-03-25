@@ -12,9 +12,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-circle-ir is the core TypeScript SAST library for taint analysis. It detects data flow vulnerabilities by tracking data from user-controlled sources (HTTP inputs, environment variables, etc.) to dangerous sinks (SQL queries, command execution, etc.) using Tree-sitter for parsing.
+circle-ir is the core TypeScript SAST library for taint analysis and software quality metrics. It detects data-flow vulnerabilities (SQL injection, XSS, path traversal, …) and produces code quality findings (dead code, resource leaks, N+1 queries, …) and metrics (cyclomatic complexity, CBO, Halstead, …) using Tree-sitter for parsing.
 
-This is a standalone static analysis library. LLM-based enrichment and discovery are out of scope.
+**Scope boundary:**
+- circle-ir: SAST passes + metrics — all deterministic, $0, no LLM
+- circle-ir-ai: LLM-enhanced passes, clustering, semantic understanding — separate package
+
+**Canonical references:**
+- [`docs/PASSES.md`](docs/PASSES.md) — every pass and metric with canonical number, `rule_id`, CWE, SARIF level, and status
+- [`TODO.md`](TODO.md) — phase-based action plan; use pass numbers from PASSES.md when referring to work items
 
 ## Build Commands
 
@@ -35,6 +41,7 @@ npm run test:coverage   # Run tests with coverage report (must be ≥75%)
 For detailed architecture, see:
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Full system architecture
 - **[docs/SPEC.md](docs/SPEC.md)** - Circle-IR specification
+- **[docs/PASSES.md](docs/PASSES.md)** - Canonical pass + metric registry (numbers, CWEs, status)
 
 **Multi-target build system:**
 - Node.js build via `tsc` (ES2022, strict mode)
@@ -43,11 +50,23 @@ For detailed architecture, see:
 
 **Source structure:**
 - `src/core/` - Parsing and IR generation using web-tree-sitter
-- `src/analysis/` - Taint flow analysis engine
-- `src/types/` - TypeScript type definitions
+- `src/analysis/` - Taint flow analysis engine + all AnalysisPass implementations
+- `src/analysis/passes/` - Individual pass modules (TaintMatcherPass, ConstantPropagationPass, …)
+- `src/graph/` - CodeGraph (lazy indexes), AnalysisPipeline, ProjectGraph, analysis-pass interface
+- `src/types/` - TypeScript type definitions (`SastFinding`, `MetricValue`, `PassCategory`, …)
 - `src/languages/` - Language plugins (Java, JavaScript, Python, Rust)
-- `src/resolution/` - Cross-file resolution and type hierarchy
+- `src/resolution/` - Cross-file resolution, SymbolTable, TypeHierarchyResolver
 - Entry point: `src/browser.ts` (browser-specific initialization)
+
+**Analysis pipeline:**
+`analyze()` runs 6 sequential `AnalysisPass` implementations through `AnalysisPipeline`. Each pass:
+1. Declares `readonly name` (result key) and `readonly category: PassCategory`
+2. Reads prior pass results via `context.getResult(name)`
+3. Emits `SastFinding` objects via `context.addFinding(finding)`
+4. Returns a typed result stored in the `PipelineRunResult.results` Map
+
+Current passes (all `category = 'security'`):
+`TaintMatcherPass` → `ConstantPropagationPass` → `LanguageSourcesPass` → `SinkFilterPass` → `TaintPropagationPass` → `InterproceduralPass`
 
 **Configuration-driven analysis:**
 The `configs/` directory contains YAML definitions for taint sources and sinks:
@@ -109,7 +128,7 @@ The spec includes an Implementation Status table tracking Python (reference) vs 
 
 ## Test Coverage
 
-- 743+ tests passing
+- 788+ tests passing
 - 75%+ coverage required
 - See `TODO.md` for areas needing additional test coverage
 
@@ -137,8 +156,9 @@ When reviewing or modifying circle-ir, verify these requirements:
 - [ ] **README.md** - API documentation and usage examples
 - [ ] **docs/SPEC.md** - Circle-IR specification (update Implementation Status when adding features)
 - [ ] **docs/ARCHITECTURE.md** - System design and ADRs
+- [ ] **docs/PASSES.md** - Pass + metric registry (update status column when implementing or shipping a pass)
 - [ ] **CHANGELOG.md** - Version history with semver
-- [ ] **TODO.md** - Pending improvements and known issues
+- [ ] **TODO.md** - Phase-based action plan (check off items as passes are implemented)
 
 ### Testing
 - [ ] **Coverage ≥75%** - Run `npm run test:coverage` to verify
@@ -169,6 +189,36 @@ For detailed status, benchmark scores, and pending improvements, see [TODO.md](T
 2. Include: method signature, CWE, severity, vulnerable argument positions
 3. Add test case in `tests/` directory
 4. Update CHANGELOG.md
+
+### Adding a New Analysis Pass
+
+1. Look up the pass in `docs/PASSES.md` to get its canonical number, `rule_id`, CWE, `category`, and SARIF `level`
+2. Create `src/analysis/passes/<rule_id>-pass.ts` implementing `AnalysisPass<YourResultType>`
+   - Set `readonly name = '<rule_id>'` and `readonly category = '<PassCategory>'`
+   - Call `context.addFinding(finding)` for each `SastFinding` emitted — do NOT return findings in the result type
+   - Check `docs/PASSES.md §F` for required graphs; only query what the pass actually needs
+3. Register the pass in `analyze()` (`src/analyzer.ts`) if it runs per-file, or in `CrossFilePass` if project-level
+4. Add tests in `tests/analysis/passes/<rule_id>.test.ts`
+5. Update `docs/PASSES.md` status from `phase-1/phase-4` → `shipped`
+6. Check the item off in `TODO.md`
+7. Update `CHANGELOG.md`
+
+**SastFinding construction example:**
+```typescript
+context.addFinding({
+  id: `${this.name}-${graph.ir.meta.file}-${line}`,
+  pass: this.name,
+  category: this.category,
+  rule_id: this.name,      // matches docs/PASSES.md rule_id
+  cwe: 'CWE-561',          // from docs/PASSES.md CWE column
+  severity: 'low',
+  level: 'warning',        // from docs/PASSES.md level column
+  message: 'Dead code: block is unreachable from any entry point',
+  file: graph.ir.meta.file,
+  line,
+  snippet,
+});
+```
 
 ### Adding Language Support
 1. Create plugin in `src/languages/plugins/<language>.ts` extending `BaseLanguagePlugin`

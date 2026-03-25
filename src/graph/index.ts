@@ -4,4 +4,5 @@ export {
   AnalysisPipeline,
   type AnalysisPass,
   type PassContext,
+  type PipelineRunResult,
 } from './analysis-pass.js';

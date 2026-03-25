@@ -4,13 +4,18 @@
  * Main entry point for analyzing source code and producing Circle-IR output.
  * This is the core static analyzer. LLM-based verification and discovery are out of scope for this library.
  *
- * The analysis pipeline runs six sequential passes over a shared CodeGraph:
+ * The analysis pipeline runs eleven sequential passes over a shared CodeGraph:
  *   1. TaintMatcherPass        — config-based source/sink extraction
  *   2. ConstantPropagationPass — dead-code detection, symbol table, field taint
  *   3. LanguageSourcesPass     — language-specific sources/sinks (JS, Python, getters)
  *   4. SinkFilterPass          — four-stage false-positive elimination
  *   5. TaintPropagationPass    — DFG-based flow verification
  *   6. InterproceduralPass     — cross-method taint propagation
+ *   7. DeadCodePass            — CFG blocks unreachable from entry (CWE-561)
+ *   8. MissingAwaitPass        — unawaited async calls in JS/TS (CWE-252)
+ *   9. NPlusOnePass            — DB/HTTP calls inside loop bodies (CWE-1049)
+ *  10. MissingPublicDocPass    — public methods/types without doc comments
+ *  11. TodoInProdPass          — TODO/FIXME/HACK markers in production code
  */
 
 import type { CircleIR, AnalysisResponse, Vulnerability, Enriched, ProjectAnalysis, ProjectMeta } from './types/index.js';
@@ -47,6 +52,11 @@ import { LanguageSourcesPass } from './analysis/passes/language-sources-pass.js'
 import { SinkFilterPass, filterCleanVariableSinks, filterSanitizedSinks } from './analysis/passes/sink-filter-pass.js';
 import { TaintPropagationPass } from './analysis/passes/taint-propagation-pass.js';
 import { InterproceduralPass } from './analysis/passes/interprocedural-pass.js';
+import { DeadCodePass } from './analysis/passes/dead-code-pass.js';
+import { MissingAwaitPass } from './analysis/passes/missing-await-pass.js';
+import { NPlusOnePass } from './analysis/passes/n-plus-one-pass.js';
+import { MissingPublicDocPass } from './analysis/passes/missing-public-doc-pass.js';
+import { TodoInProdPass } from './analysis/passes/todo-in-prod-pass.js';
 
 // Helpers used by analyzeForAPI
 import {
@@ -259,13 +269,18 @@ export async function analyze(
   const config = options.taintConfig ?? getDefaultConfig();
 
   // Run the analysis pipeline
-  const results = new AnalysisPipeline()
+  const { results, findings } = new AnalysisPipeline()
     .add(new TaintMatcherPass())
     .add(new ConstantPropagationPass(tree))
     .add(new LanguageSourcesPass())
     .add(new SinkFilterPass())
     .add(new TaintPropagationPass())
     .add(new InterproceduralPass())
+    .add(new DeadCodePass())
+    .add(new MissingAwaitPass())
+    .add(new NPlusOnePass())
+    .add(new MissingPublicDocPass())
+    .add(new TodoInProdPass())
     .run(graph, code, language, config);
 
   const sinkFilter = results.get('sink-filter')    as SinkFilterResult;
@@ -290,7 +305,8 @@ export async function analyze(
     unresolvedItems: unresolved.length,
   });
 
-  return { meta, types, calls, cfg, dfg, taint, imports, exports, unresolved, enriched };
+  return { meta, types, calls, cfg, dfg, taint, imports, exports, unresolved, enriched,
+           findings: findings.length > 0 ? findings : undefined };
 }
 
 // ---------------------------------------------------------------------------

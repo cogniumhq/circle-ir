@@ -7,6 +7,7 @@
  */
 
 import type { TaintConfig } from '../types/config.js';
+import type { PassCategory, SastFinding } from '../types/index.js';
 import type { CodeGraph } from './code-graph.js';
 
 /**
@@ -31,22 +32,39 @@ export interface PassContext {
 
   /** Returns true if the named pass has already produced a result. */
   hasResult(passName: string): boolean;
+
+  /**
+   * Emit a SAST finding from this pass.
+   * Findings are collected by the pipeline and returned alongside results.
+   */
+  addFinding(finding: SastFinding): void;
 }
 
 /**
  * An analysis pass over a CodeGraph.
- * Each pass has a unique name used to key its result in the pipeline.
+ * Each pass has a unique name and category used to key its result in the
+ * pipeline and group findings by ISO 25010 quality characteristic.
  */
 export interface AnalysisPass<TResult = unknown> {
   readonly name: string;
+  /** ISO 25010 / SonarQube category for findings emitted by this pass. */
+  readonly category: PassCategory;
   run(context: PassContext): TResult;
+}
+
+/** Return value of AnalysisPipeline.run(). */
+export interface PipelineRunResult {
+  /** Keyed pass results (same semantics as the previous Map return). */
+  results: Map<string, unknown>;
+  /** All SastFindings emitted via context.addFinding() across all passes. */
+  findings: SastFinding[];
 }
 
 /**
  * Runs a sequence of AnalysisPasses, threading context between them.
  *
  * Usage:
- *   const results = new AnalysisPipeline()
+ *   const { results, findings } = new AnalysisPipeline()
  *     .add(new TaintMatcherPass(config))
  *     .add(new ConstantPropagationPass(tree))
  *     .run(graph, code, language, config);
@@ -64,8 +82,9 @@ export class AnalysisPipeline {
     code: string,
     language: string,
     config: TaintConfig,
-  ): Map<string, unknown> {
+  ): PipelineRunResult {
     const results = new Map<string, unknown>();
+    const findings: SastFinding[] = [];
 
     const context: PassContext = {
       graph,
@@ -83,6 +102,9 @@ export class AnalysisPipeline {
       hasResult(passName: string): boolean {
         return results.has(passName);
       },
+      addFinding(finding: SastFinding): void {
+        findings.push(finding);
+      },
     };
 
     for (const pass of this.passes) {
@@ -90,6 +112,6 @@ export class AnalysisPipeline {
       results.set(pass.name, result);
     }
 
-    return results;
+    return { results, findings };
   }
 }

@@ -25,6 +25,7 @@ export interface TaintPropagationPassResult {
 
 export class TaintPropagationPass implements AnalysisPass<TaintPropagationPassResult> {
   readonly name = 'taint-propagation';
+  readonly category = 'security' as const;
 
   run(ctx: PassContext): TaintPropagationPassResult {
     const { graph } = ctx;

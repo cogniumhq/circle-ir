@@ -13,6 +13,7 @@
 
 import type {
   CircleIR,
+  CFGBlock,
   DFGDef,
   DFGUse,
   DFGChain,
@@ -230,6 +231,47 @@ export class CodeGraph {
     return (this.defsByVar.get(variable) ?? []).filter(
       d => d.line > afterLine && d.line <= upToLine,
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // CFG indexes
+  // ---------------------------------------------------------------------------
+
+  private _blockById: Map<number, CFGBlock> | null = null;
+  get blockById(): Map<number, CFGBlock> {
+    if (!this._blockById) {
+      this._blockById = new Map();
+      for (const block of this.ir.cfg.blocks) {
+        this._blockById.set(block.id, block);
+      }
+    }
+    return this._blockById;
+  }
+
+  /**
+   * Returns the line range of each detected loop body in the file.
+   *
+   * A loop is identified by CFG back-edges (type = "back"). For each back edge
+   * `A → B`, B is the loop header and A is the last block before the back-jump.
+   * The loop body spans from `header.start_line` to `A.end_line` (inclusive).
+   *
+   * Returns `{ start_line, end_line }` — one entry per back-edge.
+   * Overlapping ranges are returned separately; callers can merge as needed.
+   *
+   * Usage: check whether line L is inside any loop with
+   *   `graph.loopBodies().some(r => L >= r.start_line && L <= r.end_line)`
+   */
+  loopBodies(): Array<{ start_line: number; end_line: number }> {
+    const loops: Array<{ start_line: number; end_line: number }> = [];
+    for (const edge of this.ir.cfg.edges) {
+      if (edge.type !== 'back') continue;
+      const header = this.blockById.get(edge.to);
+      const tail   = this.blockById.get(edge.from);
+      if (header && tail) {
+        loops.push({ start_line: header.start_line, end_line: tail.end_line });
+      }
+    }
+    return loops;
   }
 
   /**

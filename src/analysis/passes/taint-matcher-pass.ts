@@ -24,6 +24,7 @@ export interface TaintMatcherResult {
 
 export class TaintMatcherPass implements AnalysisPass<TaintMatcherResult> {
   readonly name = 'taint-matcher';
+  readonly category = 'security' as const;
 
   run(ctx: PassContext): TaintMatcherResult {
     const { graph, language, config } = ctx;

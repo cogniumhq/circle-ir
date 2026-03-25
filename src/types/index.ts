@@ -358,7 +358,180 @@ export interface ResolvedCall {
 }
 
 // =============================================================================
-// 11. Findings (PENDING)
+// 11a. SAST Pass Taxonomy (CWE + ISO 25010 aligned)
+// =============================================================================
+
+/**
+ * Category of an analysis pass, aligned with ISO/IEC 25010:2023 quality
+ * characteristics and SonarQube/PMD conventions.
+ *
+ * - security       → Confidentiality / Integrity (CWE vulnerability classes)
+ * - reliability    → Faultlessness, resource safety (CWE-4xx / CWE-7xx)
+ * - performance    → Performance Efficiency (CWE-10xx)
+ * - maintainability → Analysability, Modifiability (documentation, complexity)
+ * - architecture   → Modularity, reusability (dependency / coupling issues)
+ */
+export type PassCategory =
+  | 'security'
+  | 'reliability'
+  | 'performance'
+  | 'maintainability'
+  | 'architecture';
+
+/**
+ * SARIF 2.1.0 result level (OASIS standard).
+ * Maps to SonarQube severity: error→blocker/critical, warning→major, note→minor/info.
+ */
+export type SarifLevel = 'error' | 'warning' | 'note' | 'none';
+
+/**
+ * A finding produced directly by an analysis pass — no LLM enrichment required.
+ *
+ * Field alignment:
+ *  - `cwe`      → CWE Base-level ID (e.g. "CWE-89", "CWE-476", "CWE-1047")
+ *  - `level`    → SARIF 2.1.0 result.level
+ *  - `severity` → circle-ir Severity (maps from level: error→critical/high,
+ *                 warning→medium, note→low)
+ *  - `evidence` → pass-specific structured details (non-breaking extensibility)
+ *
+ * CWE mapping guide by category:
+ *  security:       CWE-89 SQL inj, CWE-79 XSS, CWE-78 command inj, …
+ *  reliability:    CWE-476 null-deref, CWE-772 resource-leak, CWE-561 dead-code,
+ *                  CWE-252 unchecked-return, CWE-391 unchecked-exception
+ *  performance:    CWE-1049 N+1 query, CWE-1046 string-concat-loop,
+ *                  CWE-1050 resource-consumption-in-loop
+ *  maintainability: CWE-1109 variable-shadowing, CWE-1041 duplicate-code
+ *  architecture:   CWE-1047 circular-deps, CWE-1060 excessive-coupling
+ */
+export interface SastFinding {
+  /** Unique finding ID: `<rule_id>-<hash(file+line)>` */
+  id: string;
+  /** Name of the AnalysisPass that produced this finding. */
+  pass: string;
+  /** ISO 25010 category. */
+  category: PassCategory;
+  /** Rule identifier, e.g. "dead-code", "n-plus-one", "missing-await". */
+  rule_id: string;
+  /** CWE reference (optional for findings without a CWE mapping). */
+  cwe?: string;
+  /** Actionable severity aligned with circle-ir Severity type. */
+  severity: Severity;
+  /** SARIF 2.1.0 level for tool-chain integration. */
+  level: SarifLevel;
+  /** Human-readable description of the finding. */
+  message: string;
+  /** Source file path. */
+  file: string;
+  /** 1-based line number of the finding. */
+  line: number;
+  /** 1-based end line (for multi-line findings). */
+  end_line?: number;
+  /** 0-based column offset. */
+  column?: number;
+  /** Code snippet at the finding location. */
+  snippet?: string;
+  /** Suggested remediation (optional). */
+  fix?: string;
+  /** Pass-specific structured details for downstream consumers. */
+  evidence?: Record<string, unknown>;
+}
+
+// =============================================================================
+// 11b. Metrics Taxonomy (CK suite + Halstead + ISO 25010 aligned)
+// =============================================================================
+
+/**
+ * Category of a software metric, aligned with ISO/IEC 25010:2023
+ * quality sub-characteristics.
+ *
+ * | Category        | ISO 25010 sub-characteristic | Standard metric family |
+ * |----------------|-------------------------------|------------------------|
+ * | complexity      | Analysability, Testability    | McCabe v(G), Halstead  |
+ * | size            | Analysability                 | LOC, NLOC, WMC         |
+ * | coupling        | Modularity                    | CBO, RFC (CK suite)    |
+ * | inheritance     | Reusability                   | DIT, NOC (CK suite)    |
+ * | cohesion        | Modularity                    | LCOM (CK suite)        |
+ * | documentation   | Analysability                 | doc_coverage ratio     |
+ * | duplication     | Analysability, Modifiability  | duplicate_ratio        |
+ */
+export type MetricCategory =
+  | 'complexity'
+  | 'size'
+  | 'coupling'
+  | 'inheritance'
+  | 'cohesion'
+  | 'documentation'
+  | 'duplication';
+
+/**
+ * A single metric observation.
+ *
+ * Standard `name` values (use these exact strings for interoperability):
+ *
+ * Complexity (McCabe / Halstead):
+ *   "v(G)"                 McCabe Cyclomatic Complexity (IEEE Std 1008)
+ *   "cognitive_complexity"  SonarSource Cognitive Complexity
+ *   "halstead_volume"       Halstead Volume (V = N × log₂ n)
+ *   "halstead_difficulty"   Halstead Difficulty (D)
+ *   "halstead_effort"       Halstead Effort (E)
+ *   "halstead_bugs"         Halstead Bug estimate (B = E^(2/3) / 3000)
+ *
+ * Size (Chidamber & Kemerer + standard):
+ *   "LOC"      Lines of Code (total, including comments/blanks)
+ *   "NLOC"     Non-comment Non-blank Lines of Code
+ *   "WMC"      Weighted Methods per Class (sum of v(G) per method)
+ *   "statements" Statement count
+ *
+ * Coupling (CK suite):
+ *   "CBO"      Coupling Between Objects
+ *   "RFC"      Response For a Class
+ *
+ * Inheritance (CK suite):
+ *   "DIT"      Depth of Inheritance Tree
+ *   "NOC"      Number of Children
+ *
+ * Cohesion (CK suite):
+ *   "LCOM"     Lack of Cohesion in Methods
+ *
+ * Documentation:
+ *   "doc_coverage"  Ratio 0–1 of public methods/types with doc comments
+ *
+ * Duplication:
+ *   "duplicate_ratio"  Ratio 0–1 of duplicate lines in the file
+ */
+export interface MetricValue {
+  /** Standard metric name (see JSDoc above for canonical values). */
+  name: string;
+  /** ISO 25010 category. */
+  category: MetricCategory;
+  /** Numeric value of the metric. */
+  value: number;
+  /**
+   * Unit of measurement.
+   * Common values: "lines", "count", "ratio" (0–1), "bits", "tokens"
+   */
+  unit?: string;
+  /**
+   * ISO 25010:2023 sub-characteristic path, e.g.
+   * "Maintainability.Analysability" or "Reliability.Faultlessness".
+   */
+  iso_25010?: string;
+  /** Optional human-readable description. */
+  description?: string;
+}
+
+/**
+ * Metrics for a single file, aggregated across all metric passes.
+ * The `metrics` array may contain both method-level and file-level values —
+ * method-level entries carry a `method` field in `evidence` if needed.
+ */
+export interface FileMetrics {
+  file: string;
+  metrics: MetricValue[];
+}
+
+// =============================================================================
+// 11. Findings (PENDING — LLM-enriched findings, distinct from SastFinding)
 // =============================================================================
 
 export interface Finding {
@@ -502,6 +675,10 @@ export interface CircleIR {
   exports: ExportInfo[];
   unresolved: UnresolvedItem[];
   enriched: Enriched;
+  /** SAST findings produced by analysis passes (no LLM enrichment required). */
+  findings?: SastFinding[];
+  /** Software metrics computed by metric passes (CK suite, Halstead, etc.). */
+  metrics?: FileMetrics;
 }
 
 // =============================================================================

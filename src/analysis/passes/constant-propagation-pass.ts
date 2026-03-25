@@ -19,6 +19,7 @@ export type { ConstantPropagatorResult };
 
 export class ConstantPropagationPass implements AnalysisPass<ConstantPropagatorResult> {
   readonly name = 'constant-propagation';
+  readonly category = 'security' as const;
 
   constructor(private readonly tree: Tree) {}
 

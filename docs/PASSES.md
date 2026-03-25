@@ -1,0 +1,241 @@
+# circle-ir Pass & Metric Registry
+
+Single source of truth for every analysis pass and metric in circle-ir.
+**This file is the reference — all code, tests, and docs use these canonical identifiers.**
+
+Scope rule: circle-ir contains **SAST passes** (`mode: sast`) and **metrics** only.
+Passes marked `mode: sast+llm` belong to **circle-ir-ai** — never add them here.
+
+---
+
+## Field Definitions
+
+| Field | Values | Meaning |
+|-------|--------|---------|
+| `#` | integer | Canonical pass number (matches COGNIUM_IMPLEMENTATION_GUIDE §4) |
+| `rule_id` | kebab-case string | Value used in `SastFinding.rule_id` |
+| `category` | `PassCategory` | ISO 25010 category: `security \| reliability \| performance \| maintainability \| architecture` |
+| `CWE` | `CWE-NNN` or `—` | Base-level CWE reference; `—` when no applicable CWE |
+| `level` | SARIF 2.1.0 | `error` (critical/high) · `warning` (medium) · `note` (low/info) |
+| `graphs` | edge types | Comma-separated required graph capabilities |
+| `status` | see legend | Current implementation state |
+
+**Status legend:**
+- `shipped` — in production, all tests passing
+- `phase-1` — next implementation batch (existing graphs only or new cheap graph)
+- `phase-2` — metrics engine work
+- `phase-4` — requires advanced graph (dominator tree, exception flow, or type hierarchy)
+- `llm-only` — circle-ir-ai scope; never implement here
+
+**Graph abbreviations:**
+`ast` · `cfg` · `dfg` · `cg` (call graph) · `taint` · `scope` · `imports` · `dom` (dominator tree) · `throws` (exception flow) · `inherit` (type hierarchy)
+
+---
+
+## A. Security Passes (all shipped, category = `security`)
+
+All 19 passes operate on the `taint` graph. SARIF level: `error`.
+
+| # | rule_id | CWE | Description |
+|---|---------|-----|-------------|
+| 1 | `sql-injection` | CWE-89 | User input in SQL without parameterization |
+| 2 | `command-injection` | CWE-78 | User input in shell exec/system |
+| 3 | `xss` | CWE-79 | User input in HTML output without encoding |
+| 4 | `path-traversal` | CWE-22 | User input in file path operations |
+| 5 | `ssrf` | CWE-918 | User input in outbound HTTP URL |
+| 6 | `deserialization` | CWE-502 | Untrusted data passed to deserialization |
+| 7 | `xxe` | CWE-611 | External entities enabled in XML parser |
+| 8 | `ldap-injection` | CWE-90 | User input in LDAP query string |
+| 9 | `xpath-injection` | CWE-643 | User input in XPath expression |
+| 10 | `nosql-injection` | CWE-943 | User input in NoSQL query |
+| 11 | `code-injection` | CWE-94 | User input in eval/exec/ScriptEngine |
+| 12 | `open-redirect` | CWE-601 | User input controls HTTP redirect target |
+| 13 | `log-injection` | CWE-117 | User input written to log without sanitization |
+| 14 | `trust-boundary` | CWE-501 | Tainted data crosses trust boundary (e.g. session write) |
+| 15 | `external-taint` | CWE-668 | External input reaches sensitive operation (interprocedural) |
+| 16 | `weak-random` | CWE-330 | Math.random / java.util.Random in security context |
+| 17 | `weak-hash` | CWE-327 | MD5 or SHA-1 used for security purposes |
+| 18 | `weak-crypto` | CWE-327 | DES, RC4, or ECB mode encryption |
+| 19 | `insecure-cookie` | CWE-614 | Cookie set without Secure or HttpOnly flag |
+
+---
+
+## B. Reliability Passes (category = `reliability`)
+
+| # | rule_id | CWE | level | graphs | status | Description |
+|---|---------|-----|-------|--------|--------|-------------|
+| 20 | `null-deref` | CWE-476 | error | dfg, cfg | phase-1 | Nullable source reaches dereference with no null guard on all CFG paths |
+| 21 | `resource-leak` | CWE-772 | error | cfg, dfg | phase-1 | Resource opened, not closed on at least one exception exit path |
+| 22 | `dead-code` | CWE-561 | warning | cfg | shipped | CFG block unreachable from any entry point |
+| 23 | `infinite-loop` | CWE-835 | error | cfg | phase-4 | CFG cycle with no exit edge dependent on mutable state |
+| 24 | `missing-await` | CWE-252 | warning | ast, cg | shipped | Async function called without `await`; Promise result discarded |
+| 25 | `double-close` | CWE-675 | warning | cfg, dfg | phase-4 | Resource `close()` reachable on 2+ paths that both execute |
+| 26 | `use-after-close` | CWE-672 | error | dfg, cfg | phase-4 | Read of variable after the resource it references was released |
+| 28 | `unchecked-return` | CWE-252 | warning | cg, dfg | phase-1 | Return value ignored where most callers check it (statistical) |
+| 48 | `sync-io-async` | CWE-1050 | warning | ast, cg | phase-1 | Blocking I/O call (`readFileSync`, `requests.get`) inside async function |
+| 50 | `string-concat-loop` | CWE-1046 | warning | dfg, cfg | phase-1 | `string +=` inside loop body (O(n²) allocations) |
+| 53 | `missing-guard-dom` | — | error | dom, taint | phase-4 | Auth check exists but does not dominate the sensitive operation |
+| 54 | `cleanup-verify` | CWE-772 | warning | dom, dfg | phase-4 | Resource cleanup does not post-dominate its acquisition |
+| 74 | `unhandled-exception` | CWE-390 | warning | throws, cg | phase-4 | Exception thrown, propagates through call chain with no catch |
+| 75 | `broad-catch` | CWE-396 | note | throws, inherit | phase-4 | `catch(Exception)` when only specific subtypes are thrown |
+| 76 | `swallowed-exception` | CWE-390 | warning | throws, cfg | phase-4 | Catch block: no re-throw, no log, no error return |
+| 79 | `variable-shadowing` | CWE-1109 | note | scope | phase-1 | Inner scope declares same-name variable as outer scope |
+| 81 | `leaked-global` | CWE-1109 | warning | scope | phase-1 | Assignment without declaration (accidental global in JS/Python) |
+| 82 | `unused-variable` | CWE-561 | note | scope, dfg | phase-1 | Variable declared but has no reads on any reachable path |
+
+---
+
+## C. Performance Passes (category = `performance`)
+
+| # | rule_id | CWE | level | graphs | status | Description |
+|---|---------|-----|-------|--------|--------|-------------|
+| 45 | `n-plus-one` | CWE-1049 | warning | cfg, cg | shipped | DB or external API call inside a loop body |
+| 46 | `redundant-loop-computation` | CWE-1050 | note | dfg, cfg | phase-4 | Loop-invariant expression computed on every iteration |
+| 47 | `unbounded-collection` | CWE-770 | warning | cfg, dfg | phase-4 | Collection grows inside loop with no size check or eviction |
+| 49 | `unnecessary-object-hotpath` | — | note | cfg, ast | llm-only | Object construction in loop with invariant constructor args |
+| P22 | `serial-await` | — | note | dfg, cfg | phase-4 | Sequential awaits with no data dependency between them (use Promise.all) |
+| P33 | `react-inline-jsx` | — | note | ast | phase-4 | Inline object/function in JSX props (defeats React.memo) |
+
+---
+
+## D. Maintainability Passes (category = `maintainability`)
+
+| # | rule_id | CWE | level | graphs | status | Description |
+|---|---------|-----|-------|--------|--------|-------------|
+| 33 | `stale-doc-ref` | — | note | ast, imports | phase-1 | Doc comment references a symbol that no longer exists |
+| 35 | `missing-public-doc` | — | note | ast | shipped | Public/exported function or type has no doc block |
+| 36 | `todo-in-prod` | — | note | ast | shipped | TODO/FIXME/HACK comment in non-test production file |
+| 30 | `doc-param-mismatch` | — | warning | ast, dfg | llm-only | @param documented but not in signature, or vice versa |
+| 31 | `return-type-mismatch` | — | warning | cfg, ast | llm-only | Doc says "never null" but CFG shows null return path |
+| 32 | `throws-mismatch` | — | note | throws, ast | llm-only | @throws documented but unreachable, or thrown but undocumented |
+| 34 | `doc-wrong-behavior` | — | warning | depends, ast | llm-only | Graph-derived effects contradict the doc description |
+| 37 | `deprecation-no-replacement` | — | note | ast, cg | llm-only | @deprecated with no replacement documented; callers still exist |
+| 38 | `inconsistent-error-handling` | — | warning | cg, cfg | llm-only | Most callers use try/catch for a function; one doesn't |
+| 39 | `inconsistent-naming` | — | note | ast | llm-only | 95%+ of boolean getters are isX/hasX; outlier uses different pattern |
+| 40 | `inconsistent-param-order` | — | note | ast | llm-only | Related functions have different parameter ordering |
+| 44 | `magic-numbers` | — | note | ast, dfg | llm-only | Unexplained numeric literal in non-constant context |
+
+---
+
+## E. Architecture Passes (category = `architecture`)
+
+| # | rule_id | CWE | level | graphs | status | Description |
+|---|---------|-----|-------|--------|--------|-------------|
+| 62 | `deep-inheritance` | CWE-1086 | note | inherit | phase-4 | Inheritance depth > 5 levels |
+| 64 | `missing-override` | — | warning | inherit, ast | phase-4 | Method matches supertype signature but lacks @Override annotation |
+| 66 | `unused-interface-method` | — | note | inherit, cg | phase-4 | Interface method declared but never called through that interface |
+| 68 | `circular-dependency` | CWE-1047 | warning | imports | phase-1 | Cycle in module/package import graph (Tarjan's SCC) |
+| 71 | `orphan-module` | — | note | imports | phase-1 | File has no incoming imports and is not a declared entry point |
+| 72 | `dependency-fan-out` | — | note | imports | phase-1 | Module imports 20+ other modules (high efferent coupling) |
+
+---
+
+## F. Implementation Phases Summary
+
+| Phase | Focus | Passes | New graphs |
+|-------|-------|--------|------------|
+| **0 (done)** | Architecture foundation | — | CodeGraph lazy indexes, AnalysisPipeline, ProjectGraph, CrossFilePass, taxonomy types |
+| **1 (in progress)** | High-impact SAST passes | ~~#22, #24, #45, #35, #36~~ ✓, #20, #21, #28, #48, #50, #79, #81, #82, #33, #68, #71, #72 | scope table, import graph |
+| **2** | Metrics engine | — (metrics, not passes) | `cognium metrics` command; MetricRunner; 38 metrics |
+| **4** | Advanced graphs + passes | #23, #25, #26, #46, #47, #53, #54, #62, #64, #66, #74, #75, #76, P22, P33 | dominator tree, exception flow, type hierarchy wired to taint |
+
+> Phase 3 (LLM passes) and Phase 5 (semantic understanding) belong to **circle-ir-ai**.
+
+---
+
+## G. Metric Registry
+
+Standard metric names (use these exact strings in `MetricValue.name`).
+All metrics belong to circle-ir — no LLM required.
+
+### Complexity (`MetricCategory = 'complexity'`)
+
+| name | Standard | ISO 25010 | scope | formula / method |
+|------|----------|-----------|-------|------------------|
+| `v(G)` | McCabe 1976 / IEEE Std 1008 | Maintainability.Testability | function | `edges − nodes + 2` on CFG |
+| `essential_complexity` | McCabe 1976 | Maintainability.Analysability | function | `v(G)` after removing structured reducible subgraphs |
+| `cognitive_complexity` | SonarSource | Maintainability.Analysability | function | Penalty accumulation on AST nesting + breaks |
+| `nesting_depth_max` | — | Maintainability.Analysability | function | Max block nesting depth from AST |
+| `nesting_depth_avg` | — | Maintainability.Analysability | function | Average nesting depth across all branches |
+| `path_count` | — | Maintainability.Testability | function | Distinct entry→exit paths in CFG |
+| `loop_complexity` | — | Maintainability.Analysability | function | Count of back-edges in CFG |
+| `condition_complexity` | — | Maintainability.Analysability | function | Count of `&&` / `\|\|` / `!` in branch conditions |
+| `halstead_volume` | Halstead 1977 | Maintainability.Analysability | function | `V = N × log₂(n)` where N=total operators+operands, n=unique |
+| `halstead_difficulty` | Halstead 1977 | Maintainability.Analysability | function | `D = (n1/2) × (N2/n2)` |
+| `halstead_effort` | Halstead 1977 | Maintainability.Analysability | function | `E = D × V` |
+| `halstead_bugs` | Halstead 1977 | Reliability.Faultlessness | function | `B = E^(2/3) / 3000` |
+| `data_flow_complexity` | — | Maintainability.Analysability | function | Count of def-use chains from DFG |
+| `variable_liveness_span` | — | Maintainability.Analysability | function | Avg span (CFG nodes) between def and last use |
+| `fan_in_data` | — | Maintainability.Analysability | function | Count of distinct data inputs (DFG reads from outside) |
+| `fan_out_data` | — | Maintainability.Analysability | function | Count of distinct data outputs (DFG writes observable outside) |
+| `state_mutation_count` | — | Reliability.Faultlessness | function | Count of writes to non-local variables |
+
+### Size (`MetricCategory = 'size'`)
+
+| name | Standard | ISO 25010 | scope |
+|------|----------|-----------|-------|
+| `LOC` | standard | Maintainability.Analysability | file/function |
+| `NLOC` | standard | Maintainability.Analysability | file/function |
+| `comment_density` | — | Maintainability.Analysability | file/function |
+| `WMC` | CK suite (Chidamber & Kemerer 1994) | Maintainability.Analysability | class |
+| `function_count` | — | Maintainability.Analysability | file/class |
+| `parameter_count` | — | Maintainability.Analysability | function |
+| `statements` | — | Maintainability.Analysability | function |
+
+### Coupling (`MetricCategory = 'coupling'`)
+
+| name | Standard | ISO 25010 | scope |
+|------|----------|-----------|-------|
+| `CBO` | CK suite | Maintainability.Modularity | class |
+| `RFC` | CK suite | Maintainability.Modularity | class |
+| `Ca` | Robert Martin | Maintainability.Modularity | function/module |
+| `Ce` | Robert Martin | Maintainability.Modularity | function/module |
+| `instability` | Robert Martin | Maintainability.Modularity | function/module |
+| `import_depth` | — | Maintainability.Modularity | module |
+| `dep_graph_density` | — | Maintainability.Modularity | codebase |
+| `api_surface_ratio` | — | Maintainability.Modularity | module |
+| `internal_reuse` | — | Maintainability.Modularity | codebase |
+| `module_cycle_count` | — | Maintainability.Modularity | codebase |
+
+### Inheritance (`MetricCategory = 'inheritance'`)
+
+| name | Standard | ISO 25010 | scope |
+|------|----------|-----------|-------|
+| `DIT` | CK suite | Maintainability.Reusability | class |
+| `NOC` | CK suite | Maintainability.Reusability | class |
+
+### Cohesion (`MetricCategory = 'cohesion'`)
+
+| name | Standard | ISO 25010 | scope |
+|------|----------|-----------|-------|
+| `LCOM` | CK suite | Maintainability.Modularity | class |
+| `LCOM4` | Hitz & Montazeri | Maintainability.Modularity | class |
+| `TCC` | Bieman & Kang | Maintainability.Modularity | class |
+
+### Documentation (`MetricCategory = 'documentation'`)
+
+| name | Standard | ISO 25010 | scope |
+|------|----------|-----------|-------|
+| `doc_coverage` | — | Maintainability.Analysability | file/class |
+
+### Duplication (`MetricCategory = 'duplication'`)
+
+| name | Standard | ISO 25010 | scope |
+|------|----------|-----------|-------|
+| `duplicate_ratio` | — | Maintainability.Analysability | file/codebase |
+| `clone_count` | — | Maintainability.Analysability | codebase |
+
+### Composite Scores
+
+Computed from the primitives above. Not `MetricValue` entries — separate `CompositeScore` type (to be added in Phase 2).
+
+| name | Formula |
+|------|---------|
+| `maintainability_index` | `171 − 5.2×ln(halstead_volume) − 0.23×v(G) − 16.2×ln(LOC) + 50×sin(√(2.4×comment_density))` |
+| `code_quality_index` | `0.30×MI + 0.25×testability + 0.20×coupling + 0.15×doc_coverage + 0.10×(1−duplicate_ratio)` |
+| `bug_hotspot_score` | `v(G) × CBO × state_mutation_count × (1 / max(test_indicators, 1))` |
+| `refactoring_roi` | `(bug_hotspot × Ca) / (v(G) + LOC)` |
+
+---
+
+*Last updated: 2026-03-25*

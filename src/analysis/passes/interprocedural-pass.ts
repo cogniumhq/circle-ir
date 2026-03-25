@@ -31,6 +31,7 @@ export interface InterproceduralPassResult {
 
 export class InterproceduralPass implements AnalysisPass<InterproceduralPassResult> {
   readonly name = 'interprocedural';
+  readonly category = 'security' as const;
 
   run(ctx: PassContext): InterproceduralPassResult {
     const { graph } = ctx;
