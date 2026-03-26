@@ -91,6 +91,23 @@ function extractJavaScriptImports(tree: Tree): ImportInfo[] {
     imports.push(...importInfos);
   }
 
+  // Find re-export statements: `export { X } from './file'`
+  // These create an implicit import dependency that must be tracked by ImportGraph.
+  const exportStatements = findNodes(tree.rootNode, 'export_statement');
+  for (const exportStmt of exportStatements) {
+    const sourceNode = exportStmt.childForFieldName('source');
+    if (!sourceNode) continue; // no `from '...'` clause — not a re-export
+    const fromPackage = getNodeText(sourceNode).replace(/['"]/g, '');
+    if (!fromPackage) continue;
+    imports.push({
+      imported_name: '*',
+      from_package: fromPackage,
+      alias: null,
+      is_wildcard: true,
+      line_number: exportStmt.startPosition.row + 1,
+    });
+  }
+
   // Find CommonJS require calls
   const requireCalls = findRequireCalls(tree);
   imports.push(...requireCalls);

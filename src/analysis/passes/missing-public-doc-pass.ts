@@ -26,6 +26,13 @@ import type { AnalysisPass, PassContext } from '../../graph/analysis-pass.js';
 /** Files matching these path patterns are treated as test/spec files. */
 const TEST_PATH_RE = /[/._](test|tests|spec|specs|__tests?__|__mocks?__)[/._]/i;
 
+/**
+ * Files in common utility/helper directories are implementation details, not
+ * public library API. Requiring JSDoc on every class in these directories
+ * produces noise when the project is a CLI tool or application.
+ */
+const UTIL_DIR_RE = /[/](utils?|helpers?|internal|private|common|shared)[/]/i;
+
 /** Checks whether a single character position is a doc-comment start. */
 function hasDocCommentBefore(lines: string[], startLine: number): boolean {
   // Look back up to 10 lines (handles multi-line annotations + blank lines).
@@ -90,6 +97,12 @@ export class MissingPublicDocPass implements AnalysisPass<MissingPublicDocPassRe
       return { missingDocMethods: [], missingDocTypes: [] };
     }
 
+    // Skip files inside utility/helper directories — these are internal
+    // implementation details, not public library API surfaces.
+    if (UTIL_DIR_RE.test(graph.ir.meta.file)) {
+      return { missingDocMethods: [], missingDocTypes: [] };
+    }
+
     // Only supported languages.
     if (!['java', 'javascript', 'typescript', 'python'].includes(language)) {
       return { missingDocMethods: [], missingDocTypes: [] };
@@ -102,6 +115,11 @@ export class MissingPublicDocPass implements AnalysisPass<MissingPublicDocPassRe
     const missingDocTypes: TypeInfo[] = [];
 
     for (const type of graph.ir.types) {
+      // Skip the synthetic '<module>' type used to group top-level functions.
+      // It is not a real class/interface and requiring a doc comment on it
+      // produces misleading findings for every TypeScript/JavaScript file.
+      if (type.name === '<module>') continue;
+
       // Check type-level doc comment.
       if (!hasDocCommentBefore(lines, type.start_line)) {
         missingDocTypes.push(type);

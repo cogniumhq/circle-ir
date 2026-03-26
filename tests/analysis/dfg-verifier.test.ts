@@ -6,6 +6,21 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { DFGVerifier, verifyTaintFlow, formatVerificationResult } from '../../src/analysis/dfg-verifier.js';
 import type { DFG, CallInfo, TaintSource, TaintSink, TaintSanitizer } from '../../src/types/index.js';
 
+import { CodeGraph } from '../../src/graph/code-graph.js';
+import type { CircleIR } from '../../src/types/index.js';
+
+function makeIR(defs: DFG['defs'] = [], uses: DFG['uses'] = [], chains: DFG['chains'] = []): CircleIR {
+  return {
+    meta: { circle_ir: '3.0', file: 'test.java', language: 'java', loc: 20, hash: '' },
+    types: [], calls: [],
+    cfg: { blocks: [], edges: [] },
+    dfg: { defs, uses, chains },
+    taint: { sources: [], sinks: [], sanitizers: [] },
+    imports: [], exports: [], unresolved: [],
+    enriched: {} as CircleIR['enriched'],
+  };
+}
+
 describe('DFGVerifier', () => {
   // Helper to create mock DFG
   function createDFG(
@@ -456,6 +471,36 @@ describe('DFGVerifier', () => {
       expect(resultLong.confidence).toBeGreaterThanOrEqual(0);
     });
 
+    it('should handle cyclic def-use chains without infinite loop', () => {
+      // A → B → A cycle: the visited set must prevent infinite recursion
+      const dfg = createDFG(
+        [
+          { id: 1, variable: 'a', line: 5, kind: 'param' },
+          { id: 2, variable: 'b', line: 8, kind: 'local' },
+        ],
+        [
+          { id: 1, variable: 'a', line: 8,  def_id: 1 },
+          { id: 2, variable: 'b', line: 10, def_id: 2 },
+        ],
+        [
+          { from_def: 1, to_def: 2, via: 'a' },
+          { from_def: 2, to_def: 1, via: 'b' },  // cycle back to def 1
+        ]
+      );
+
+      const source: TaintSource = {
+        type: 'http_param', location: 'test', severity: 'high', line: 5, confidence: 0.9,
+      };
+      const sink: TaintSink = {
+        type: 'sql_injection', cwe: 'CWE-89', location: 'test', line: 20, confidence: 0.9,
+      };
+
+      // Must not hang; visited set breaks the cycle
+      const result = verifyTaintFlow(dfg, [], source, sink);
+      expect(typeof result.verified).toBe('boolean');
+      expect(result.confidence).toBeGreaterThanOrEqual(0);
+    });
+
     it('should handle allowFieldFlows configuration', () => {
       const dfg = createDFG(
         [
@@ -503,6 +548,74 @@ describe('DFGVerifier', () => {
       // Results may differ based on field flow setting
       expect(typeof resultNoFields.verified).toBe('boolean');
       expect(typeof resultWithFields.verified).toBe('boolean');
+    });
+  });
+
+  describe('CodeGraph constructor path', () => {
+    it('accepts a CodeGraph instance as first argument', () => {
+      const defs = [{ id: 1, variable: 'input', line: 5, kind: 'param' as const }];
+      const uses = [{ id: 1, variable: 'input', line: 10, def_id: 1 }];
+      const graph = new CodeGraph(makeIR(defs, uses));
+
+      const source: TaintSource = {
+        type: 'http_param', location: 'test', severity: 'high', line: 5, confidence: 0.9,
+      };
+      const sink: TaintSink = {
+        type: 'sql_injection', cwe: 'CWE-89', location: 'test', line: 10, confidence: 0.9,
+      };
+
+      const verifier = new DFGVerifier(graph, [], { maxDepth: 10 });
+      const result   = verifier.verify(source, sink);
+      expect(typeof result.verified).toBe('boolean');
+    });
+
+    it('CodeGraph path with default config (no options)', () => {
+      const graph = new CodeGraph(makeIR());
+      const verifier = new DFGVerifier(graph, []);
+      const result = verifier.verify(
+        { type: 'http_param', location: 'test', severity: 'high', line: 99, confidence: 0.9 },
+        { type: 'sql_injection', cwe: 'CWE-89', location: 'test', line: 100, confidence: 0.9 },
+      );
+      expect(result.verified).toBe(false);
+    });
+  });
+
+  describe('getStats — sanitized branch', () => {
+    it('counts a sanitized result in getStats', () => {
+      const dfg = createDFG(
+        [{ id: 1, variable: 'input', line: 5, kind: 'param' }],
+        [{ id: 1, variable: 'input', line: 10, def_id: 1 }],
+      );
+      const calls: CallInfo[] = [{
+        method_name: 'executeQuery',
+        receiver: 'stmt',
+        arguments: [{ position: 0, expression: 'input', variable: 'input', literal: null }],
+        location: { line: 10, column: 0 },
+        in_method: 'test',
+      }];
+      const sanitizers: TaintSanitizer[] = [
+        { type: 'prepared_statement', method: 'prepareStatement', line: 5, sanitizes: ['sql_injection'] },
+      ];
+      const verifier = new DFGVerifier(dfg, calls, sanitizers);
+      const results = new Map([
+        ['5:10', {
+          verified:         false,
+          confidence:       0.1,
+          reason:           'Flow sanitized at line 5 by prepareStatement',
+          alternativePaths: 0,
+        }],
+        ['5:20', {
+          verified:         true,
+          confidence:       0.9,
+          reason:           'Verified: direct flow',
+          alternativePaths: 0,
+        }],
+      ]);
+      const stats = verifier.getStats(results);
+      expect(stats.total).toBe(2);
+      expect(stats.sanitized).toBe(1);
+      expect(stats.verified).toBe(1);
+      expect(stats.notVerified).toBe(0);
     });
   });
 });

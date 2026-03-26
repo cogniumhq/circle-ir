@@ -26,7 +26,7 @@ const NUMERIC_VAR_RE =
 
 /** Variable name suffixes that strongly suggest numeric accumulation. */
 const NUMERIC_SUFFIX_RE =
-  /(Count|Sum|Total|Size|Index|Length|Offset|Position|Score|Counter|Num|Amount|Val|Idx|Len|Max|Min|Avg|Delta|Diff|Step|Flag|Flags|Bits|Byte|Bytes)$/;
+  /(Count|Sum|Total|Size|Index|Length|Offset|Position|Score|Counter|Num|Amount|Val|Idx|Len|Max|Min|Avg|Delta|Diff|Step|Flag|Flags|Bits|Byte|Bytes|Calls|Items|Nodes|Edges|Blocks|Lines|Chars|Entries|Records|Rows)$/;
 
 /**
  * Matches a right-hand side that starts with a digit or decimal point —

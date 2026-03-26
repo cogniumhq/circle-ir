@@ -19,13 +19,14 @@ export default defineConfig({
         'src/types/**',         // Type definitions only
         'src/languages/types.ts',  // Type definitions only
         'src/analysis/constant-propagation/types.ts',  // Type definitions only
+        'src/analysis/constant-propagation.ts',        // Pure re-export facade (covered via directory)
         'src/resolution/**',    // Cross-file resolution (covered by integration tests)
       ],
       thresholds: {
-        statements: 75,
-        branches: 64,  // Lower due to language plugin conditional logic
-        functions: 75,
-        lines: 75,
+        statements: 83,
+        branches: 70,  // Limited by WASM-dependent language extraction (calls.ts, java.ts, analyzer.ts)
+        functions: 88,
+        lines: 85,
       },
     },
   },

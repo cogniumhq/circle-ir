@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.9.6] - 2026-03-26
+
+### Fixed
+
+- **`variable-shadowing` false positives eliminated** — Three root causes addressed:
+  - Added `SKIP_NAMES` set (`let`, `const`, `var`, TypeScript primitives `boolean`, `string`, `number`, etc.) to suppress phantom DFG defs produced when declaration keywords and type annotations are incorrectly extracted as variable names.
+  - Added PascalCase filter: identifiers starting with an uppercase letter (e.g. `SinkType`, `SupportedLanguage`) are skipped — these are type annotation phantoms, not real variables.
+  - Fixed `isInNestedScope()` brace-balance algorithm: added `hasOpened` flag to correctly detect when an outer block opens and closes before the inner declaration, marking them as sibling scopes (e.g. consecutive `for` loops) rather than nested ones.
+
+- **`leaked-global` false positives eliminated** — Two root causes addressed:
+  - `hasDeclaredDef()` in `ScopeGraph` now also checks module-level declarations (`e.methodStart === -1`) so that module-scope `let`/`const`/`var` variables reassigned inside functions are no longer reported as leaks.
+  - Added text-search fallback in `LeakedGlobalPass` for `let x;` declarations with no initializer: these create no DFG def, so a regex scan of source lines (`declPattern`) and module-level lines (`moduleDecl`) detects them before flagging a leak.
+
+- **`external_taint_escape` false positives reduced (35 → 4)** — Two root causes addressed:
+  - `InterproceduralPass` Scenario B (no sinks found) now filters out `interprocedural_param` sources with confidence < 0.6 in addition to `constructor_field` sources. Low-confidence interprocedural params arise when TypeScript constructor shorthand (`private source: string`) prevents type extraction.
+  - `LanguageSourcesPass` narrowed the DOM input pattern from `/\.value\b/` (matched any `.value` property access) to `/\b(?:event|e)\.(?:target\.)?value\b/` (matches only DOM event `.value` access), eliminating spurious `dom_input` sources from evaluator-style code using `.value` on non-DOM objects.
+
 ## [3.9.5] - 2026-03-25
 
 ### Added

@@ -27,6 +27,57 @@
 import type { AnalysisPass, PassContext } from '../../graph/analysis-pass.js';
 import { ScopeGraph } from '../../graph/scope-graph.js';
 
+/**
+ * Variable names that should never be flagged as shadowing — either because
+ * they are JS/TS keywords that the DFG extractor may phantom-extract, or
+ * because they are built-in TypeScript primitive type names that appear in
+ * type annotations and get incorrectly treated as variable defs.
+ */
+const SKIP_NAMES = new Set([
+  // JS/TS declaration keywords (phantom defs from DFG parsing keywords as vars)
+  'let', 'const', 'var',
+  // TypeScript primitive type names (phantom defs from type annotations)
+  'boolean', 'string', 'number', 'object', 'symbol', 'undefined',
+  'null', 'never', 'void', 'any', 'unknown', 'bigint',
+]);
+
+/**
+ * Returns true when `innerLine` is inside a block that is nested within the
+ * block containing `outerLine`. Returns false when the outer block was closed
+ * before `innerLine` (i.e. they are in sibling scopes, not nested scopes).
+ *
+ * Strategy: scan lines from `outerLine` to `innerLine - 1` (1-based) counting
+ * brace pairs. A relative balance below zero means the outer block was closed —
+ * the two declarations are siblings, not a real shadowing relationship.
+ *
+ * Note: ignores braces inside string literals or comments, which may produce
+ * occasional false negatives (missed shadows) but never false positives.
+ */
+function isInNestedScope(
+  codeLines: string[],
+  outerLine: number,
+  innerLine: number,
+): boolean {
+  let balance = 0;
+  let hasOpened = false; // true once we've seen the outer block's opening {
+  for (let ln = outerLine; ln < innerLine; ln++) {
+    const text = codeLines[ln - 1] ?? ''; // ln is 1-based
+    for (const ch of text) {
+      if (ch === '{') {
+        balance++;
+        hasOpened = true;
+      } else if (ch === '}') {
+        balance--;
+        if (balance < 0) return false; // outer block closed before opening — sibling
+        // If the outer block opened and has now fully closed, the inner def is
+        // outside it (sibling scope, not nested).
+        if (hasOpened && balance === 0) return false;
+      }
+    }
+  }
+  return true;
+}
+
 export interface VariableShadowingResult {
   shadows: Array<{
     /** Line of the shadowing (inner) declaration. */
@@ -45,6 +96,7 @@ export class VariableShadowingPass implements AnalysisPass<VariableShadowingResu
   run(ctx: PassContext): VariableShadowingResult {
     const { graph, code, language } = ctx;
     const file = graph.ir.meta.file;
+    const codeLines = code.split('\n');
     const scope = new ScopeGraph(graph, code, language);
     const shadows: VariableShadowingResult['shadows'] = [];
     const reported = new Set<string>(); // deduplicate by variable+line
@@ -66,6 +118,14 @@ export class VariableShadowingPass implements AnalysisPass<VariableShadowingResu
 
         for (const [variable, varEntries] of byVar) {
           if (varEntries.length < 2) continue;
+
+          // Skip keywords, TS primitive types, and common throwaway names
+          if (SKIP_NAMES.has(variable)) continue;
+
+          // Skip PascalCase identifiers — these are almost always type annotation
+          // phantoms (class names, interface names, generic type params) that the
+          // DFG extractor incorrectly surfaces as variable defs.
+          if (variable.length > 0 && variable[0]! >= 'A' && variable[0]! <= 'Z') continue;
 
           const params  = varEntries.filter(e => e.def.kind === 'param');
           const locals  = varEntries.filter(e => e.def.kind === 'local');
@@ -134,6 +194,9 @@ export class VariableShadowingPass implements AnalysisPass<VariableShadowingResu
 
             for (let i = 1; i < declLocals.length; i++) {
               const inner = declLocals[i]!;
+              // Skip if the outer block was already closed before the inner
+              // declaration — those are sibling scopes, not nested scopes.
+              if (!isInNestedScope(codeLines, outerEntry.def.line, inner.def.line)) continue;
               const key = `${variable}-${inner.def.line}`;
               if (reported.has(key)) continue;
               reported.add(key);

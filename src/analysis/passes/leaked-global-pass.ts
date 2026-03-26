@@ -57,6 +57,7 @@ export class LeakedGlobalPass implements AnalysisPass<LeakedGlobalResult> {
     }
 
     const scope = new ScopeGraph(graph, code, language);
+    const codeLines = code.split('\n');
     const leaks: LeakedGlobalResult['leaks'] = [];
     const reported = new Set<number>(); // deduplicate by line
 
@@ -80,11 +81,26 @@ export class LeakedGlobalPass implements AnalysisPass<LeakedGlobalResult> {
       // this function body, this line is a legitimate reassignment — not a leak.
       if (scope.hasDeclaredDef(variable, methodStart)) continue;
 
+      // Text-search fallback: `let x;` (no initializer) creates no DFG def, so
+      // hasDeclaredDef misses it. Scan source lines within the method for any
+      // `let/const/var ... varName` declaration.
+      const methodInfo = graph.methodAtLine(def.line);
+      if (methodInfo) {
+        const { start_line, end_line } = methodInfo.method;
+        const escapedVar = variable.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        // Match: let/const/var followed (possibly after { or [ for destructuring) by the name
+        const declPattern = new RegExp(`\\b(?:let|const|var)\\b[^=;\\n]*\\b${escapedVar}\\b`);
+        const hasTextDecl = codeLines.slice(start_line - 1, end_line).some(l => declPattern.test(l));
+        if (hasTextDecl) continue;
+        // Also check module-level lines (before the method) for `let varName`
+        const moduleDecl = new RegExp(`^(?:export\\s+)?(?:let|const|var)\\b[^=;\\n]*\\b${escapedVar}\\b`);
+        const hasModuleDecl = codeLines.slice(0, start_line - 1).some(l => moduleDecl.test(l));
+        if (hasModuleDecl) continue;
+      }
+
       if (reported.has(def.line)) continue;
       reported.add(def.line);
 
-      // Find the enclosing method name for the message
-      const methodInfo = graph.methodAtLine(def.line);
       const enclosingFunction = methodInfo?.method.name ?? null;
 
       leaks.push({ line: def.line, variable, enclosingFunction });

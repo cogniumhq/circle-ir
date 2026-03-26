@@ -57,7 +57,10 @@ export const JS_TAINTED_PATTERNS = [
   { pattern: /\blocation\.href\b/, type: 'http_path' as const },
   { pattern: /\bdocument\.getElementById\b/, type: 'dom_input' as const },
   { pattern: /\bdocument\.querySelector\b/, type: 'dom_input' as const },
-  { pattern: /\.value\b/, type: 'dom_input' as const },
+  // Narrow to event-based DOM input reads: `e.target.value`, `event.target.value`.
+  // The formerly broad `/\.value\b/` matched any `.value` property (e.g. `result.value`,
+  // `node.value` in TypeScript) generating false positives in non-browser code.
+  { pattern: /\b(?:event|e)\.(?:target\.)?value\b/, type: 'dom_input' as const },
 ];
 
 const PYTHON_TAINTED_PATTERNS = [

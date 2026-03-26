@@ -40,7 +40,7 @@ function hasDeclKeyword(lineText: string, language: string): boolean {
 
     case 'javascript':
     case 'typescript':
-      return /\b(?:let|const|var)\s+\w/.test(lineText);
+      return /\b(?:let|const|var)\s+[\w{[]/.test(lineText);
 
     case 'rust':
       return /\blet\s+(?:mut\s+)?\w/.test(lineText);
@@ -109,14 +109,20 @@ export class ScopeGraph {
   /**
    * Returns true if the given variable has at least one def with
    * `hasDeclKeyword === true` inside the method whose start line is
-   * `methodStart`.  Used by `leaked-global` to determine whether a bare
-   * assignment is truly undeclared within its enclosing function.
+   * `methodStart` OR at module level (methodStart === -1).
+   *
+   * Module-level declarations are included because JavaScript/TypeScript
+   * module-level `let`/`const`/`var` variables are legitimately reassigned
+   * inside functions — that is not a global leak.
+   *
+   * Used by `leaked-global` to determine whether a bare assignment is truly
+   * undeclared within its enclosing function.
    */
   hasDeclaredDef(variable: string, methodStart: number): boolean {
     return this.entries.some(
       e => e.def.variable === variable
         && e.hasDeclKeyword
-        && e.methodStart === methodStart,
+        && (e.methodStart === methodStart || e.methodStart === -1),
     );
   }
 }

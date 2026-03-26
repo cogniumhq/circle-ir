@@ -27,11 +27,19 @@ import type { AnalysisPass, PassContext } from '../../graph/analysis-pass.js';
  */
 const MUST_CHECK_HIGH: ReadonlySet<string> = new Set([
   // java.io.File — boolean status
-  'createNewFile', 'mkdir', 'mkdirs', 'delete',
+  'createNewFile', 'mkdir', 'mkdirs',
   // java.util.concurrent
   'tryLock', 'tryAcquire', 'compareAndSet', 'compareAndExchange',
-  // java.util.regex.Matcher — always used in `if (matcher.find())`
-  'find',
+]);
+
+/**
+ * Java-only methods where discarding the return value is a bug.
+ * `delete` (Set.delete / Map.delete) and `find` (Array.find) have common
+ * non-Java semantics where ignoring the return value is perfectly normal.
+ */
+const MUST_CHECK_HIGH_JAVA_ONLY: ReadonlySet<string> = new Set([
+  'delete', // java.io.File.delete()
+  'find',   // java.util.regex.Matcher.find()
 ]);
 
 /**
@@ -66,7 +74,7 @@ export class UncheckedReturnPass implements AnalysisPass<UncheckedReturnResult> 
   readonly category = 'reliability' as const;
 
   run(ctx: PassContext): UncheckedReturnResult {
-    const { graph, code } = ctx;
+    const { graph, code, language } = ctx;
     const file = graph.ir.meta.file;
     const codeLines = code.split('\n');
 
@@ -80,6 +88,8 @@ export class UncheckedReturnPass implements AnalysisPass<UncheckedReturnResult> 
 
       let shouldCheck = false;
       if (MUST_CHECK_HIGH.has(name)) {
+        shouldCheck = true;
+      } else if (language === 'java' && MUST_CHECK_HIGH_JAVA_ONLY.has(name)) {
         shouldCheck = true;
       } else if (MUST_CHECK_MEDIUM.has(name)) {
         shouldCheck = receiver != null && FILE_RECEIVER_RE.test(receiver);
