@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.9.5] - 2026-03-25
+
+### Added
+
+- **Phase 2: Metrics Engine (Core 20 metrics + 4 composite scores)** — `MetricRunner` computes software quality metrics from the fully-assembled `CircleIR` after the analysis pipeline, storing results in `ir.metrics: FileMetrics`.
+  - **`MetricRunner`** (`src/analysis/metrics/metric-runner.ts`) — orchestrates 9 metric passes in sequence; each pass receives the `accumulated` results from prior passes so that `CompositeMetricsPass` (always last) can read earlier values.
+  - **`SizeMetricsPass`** — `LOC`, `NLOC`, `comment_density`, `function_count` (regex-based line classification).
+  - **`ComplexityMetricsPass`** — per-method `cyclomatic_complexity` (`v(G)` via CFG block/edge filtering by line range), `WMC` (sum), `loop_complexity` (back-edges), `condition_complexity` (true/false branch edges).
+  - **`HalsteadMetricsPass`** — `halstead_volume`, `halstead_difficulty`, `halstead_effort`, `halstead_bugs` via regex tokenizer on full source (operators = keywords + symbols; operands = identifiers + literals).
+  - **`DataFlowMetricsPass`** — `data_flow_complexity` (count of DFG uses with a reaching definition).
+  - **`CouplingMetricsPass`** — per-type `CBO` (distinct external receiver types + field types), `RFC` (methods + distinct external method names), plus `CBO_avg`/`RFC_avg` file-level averages.
+  - **`InheritanceMetricsPass`** — per-type `DIT` (inheritance depth within the file) and `NOC` (direct child count), plus `DIT_max`/`NOC_total`.
+  - **`CohesionMetricsPass`** — per-type `LCOM` (Henderson-Sellers: method pairs sharing no instance field minus pairs sharing at least one), plus `LCOM_avg`.
+  - **`DocumentationMetricsPass`** — `doc_coverage` ratio (types+methods with a `/** */` block ending on the line before `start_line`).
+  - **`CompositeMetricsPass`** — `maintainability_index` (Microsoft MI normalized 0–100), `code_quality_index`, `bug_hotspot_score`, `refactoring_roi` — all derived from `accumulated` metrics.
+- **`analyze()` updated**: metrics are now always computed and returned in `ir.metrics: FileMetrics`.
+- **Test count**: 956 → 1013 (+57 new tests across 10 new test files under `tests/analysis/metrics/`)
+
 ## [3.9.4] - 2026-03-25
 
 ### Added

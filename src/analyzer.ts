@@ -83,6 +83,9 @@ import { ImportGraph } from './graph/import-graph.js';
 import { CircularDependencyPass } from './analysis/passes/circular-dependency-pass.js';
 import { OrphanModulePass } from './analysis/passes/orphan-module-pass.js';
 
+// Metrics
+import { MetricRunner } from './analysis/metrics/index.js';
+
 // Helpers used by analyzeForAPI
 import {
   buildPythonTaintedVars,
@@ -332,6 +335,13 @@ export async function analyze(
   const unresolved = detectUnresolved(calls, types, dfg);
   const enriched   = buildEnriched(types, calls, taint.sources, taint.sinks);
 
+  // Compute software metrics (CK suite, Halstead, composite scores)
+  const metricValues = new MetricRunner().run(
+    { meta, types, calls, cfg, dfg, taint, imports, exports, unresolved, enriched },
+    code,
+    language
+  );
+
   logger.debug('Analysis complete', {
     filePath,
     finalSources: taint.sources.length,
@@ -340,8 +350,11 @@ export async function analyze(
     unresolvedItems: unresolved.length,
   });
 
-  return { meta, types, calls, cfg, dfg, taint, imports, exports, unresolved, enriched,
-           findings: findings.length > 0 ? findings : undefined };
+  return {
+    meta, types, calls, cfg, dfg, taint, imports, exports, unresolved, enriched,
+    findings: findings.length > 0 ? findings : undefined,
+    metrics: { file: filePath, metrics: metricValues },
+  };
 }
 
 // ---------------------------------------------------------------------------

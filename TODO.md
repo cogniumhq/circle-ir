@@ -13,7 +13,7 @@ Working plan and task tracker for the circle-ir SAST library.
 |-------|--------|-------|
 | 0 — Architecture foundation | ✅ Complete | CodeGraph, AnalysisPipeline, ProjectGraph, taxonomy types |
 | 1 — High-impact SAST passes | ✅ Complete | All 17 passes done (Groups 1-4, v3.9.4) |
-| 2 — Metrics engine | Pending | MetricRunner, 38 metrics, `cognium metrics` command |
+| 2 — Metrics engine | ✅ Complete | MetricRunner, 24 metrics (core 20 + 4 composite), wired into `analyze()` (v3.9.5) |
 | 4 — Advanced graphs + passes | Pending | Dominator tree, exception flow, type hierarchy wired |
 
 > Phase 3 (LLM passes) and Phase 5 (semantic understanding) are circle-ir-ai scope.
@@ -23,7 +23,7 @@ Working plan and task tracker for the circle-ir SAST library.
 
 ## Phase 0 — Architecture Foundation ✅ Complete
 
-All items complete. 956/956 tests passing.
+All items complete. 1013/1013 tests passing.
 
 - [x] **CodeGraph** (`src/graph/code-graph.ts`) — lazy Map indexes; `loopBodies()` via CFG back-edges
 - [x] **AnalysisPass interface + AnalysisPipeline** — 6 passes, `category: PassCategory`, `context.addFinding()`, `PipelineRunResult { results, findings }`
@@ -76,25 +76,31 @@ Scan 5 real-world repos. New passes must find real issues with ≤5% false posit
 
 ---
 
-## Phase 2 — Metrics Engine
+## Phase 2 — Metrics Engine ✅ Complete
 
-**Goal:** Turn findings into quantitative scores. Add `cognium metrics` command.
+**Goal:** Turn findings into quantitative scores. Core 20 metrics + 4 composite scores.
 
-- [ ] **MetricRunner** — orchestrates metric computation, outputs `FileMetrics[]` per file
-- [ ] Add `metrics?` population to `analyze()` and `analyzeProject()` return values
-- [ ] **Complexity metrics** (17 metrics) — `v(G)`, `cognitive_complexity`, `nesting_depth_max/avg`, `path_count`, `loop_complexity`, `condition_complexity`, Halstead suite, `data_flow_complexity`, `variable_liveness_span`, `fan_in/out_data`, `state_mutation_count`
-- [ ] **Size metrics** (7 metrics) — `LOC`, `NLOC`, `comment_density`, `WMC`, `function_count`, `parameter_count`, `statements`
-- [ ] **Coupling metrics** (10 metrics) — `CBO`, `RFC`, `Ca`, `Ce`, `instability`, `import_depth`, `dep_graph_density`, `api_surface_ratio`, `internal_reuse`, `module_cycle_count`
-- [ ] **Inheritance metrics** (2 metrics) — `DIT`, `NOC`
-- [ ] **Cohesion metrics** (3 metrics) — `LCOM`, `LCOM4`, `TCC`
-- [ ] **Documentation metric** — `doc_coverage`
-- [ ] **Duplication metrics** (2 metrics) — `duplicate_ratio`, `clone_count`
-- [ ] **4 composite scores** — `maintainability_index`, `code_quality_index`, `bug_hotspot_score`, `refactoring_roi`
+All items complete (v3.9.5). 1013/1013 tests passing.
+
+- [x] **MetricRunner** (`src/analysis/metrics/metric-runner.ts`) — orchestrates 9 metric passes; each pass receives `accumulated` results from prior passes
+- [x] Add `metrics?` population to `analyze()` — `ir.metrics: FileMetrics` is now always populated
+- [x] **Complexity metrics** — `cyclomatic_complexity` (v(G) per method), `WMC`, `loop_complexity`, `condition_complexity`, Halstead suite (`halstead_volume`, `halstead_difficulty`, `halstead_effort`, `halstead_bugs`), `data_flow_complexity`
+- [x] **Size metrics** — `LOC`, `NLOC`, `comment_density`, `function_count`
+- [x] **Coupling metrics** — `CBO`, `RFC`, `CBO_avg`, `RFC_avg`
+- [x] **Inheritance metrics** — `DIT`, `NOC`, `DIT_max`, `NOC_total`
+- [x] **Cohesion metrics** — `LCOM`, `LCOM_avg`
+- [x] **Documentation metric** — `doc_coverage`
+- [x] **4 composite scores** — `maintainability_index`, `code_quality_index`, `bug_hotspot_score`, `refactoring_roi`
+
+Pending (Phase 2 extensions, lower priority):
+- [ ] Remaining complexity metrics: `cognitive_complexity`, `nesting_depth_max/avg`, `path_count`, `variable_liveness_span`, `fan_in/out_data`, `state_mutation_count`
+- [ ] Remaining size metrics: `parameter_count`, `statements`
+- [ ] Remaining coupling metrics: `Ca`, `Ce`, `instability`, `import_depth`, `dep_graph_density`, `api_surface_ratio`, `internal_reuse`, `module_cycle_count`
+- [ ] Remaining cohesion metrics: `LCOM4`, `TCC`
+- [ ] Duplication metrics: `duplicate_ratio`, `clone_count`
+- [ ] `cognium metrics` CLI command (`cognium metrics ./src --format json`)
 
 See `docs/PASSES.md §G` for complete metric name/formula reference.
-
-### Phase 2 Gate
-`cognium metrics ./src --format json` produces valid `FileMetrics[]`. Composite scores tell a compelling story alongside Phase 1 findings.
 
 ---
 
