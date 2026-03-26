@@ -448,36 +448,67 @@ export class CrossFileResolver {
    */
   findCrossFileTaintFlows(): CrossFileTaintFlow[] {
     const flows: CrossFileTaintFlow[] = [];
+    // Deduplicate: same source + target sink should only emit one flow
+    const seen = new Set<string>();
 
     for (const [filePath, ir] of this.fileIRs) {
       // Check each source in the file
       for (const source of ir.taint.sources) {
+        // `interprocedural_param` sources represent "this method's parameter MIGHT be
+        // tainted when called by tainted code" — they are a per-file meta-analysis result
+        // and are not confirmed external inputs suitable for cross-file taint flows.
+        // Using them here causes false positives on every internal library function that
+        // has typed parameters and happens to call another file that contains any sink.
+        if (source.type === 'interprocedural_param') continue;
+
         // Find calls at or after the source line
         for (const call of ir.calls) {
           if (call.location.line < source.line) continue;
 
           const resolved = this.resolveCall(call, filePath);
-          if (resolved && resolved.targetFile !== filePath) {
-            // This is a cross-file call
-            // Check if any argument might be tainted
-            const taintedArgs: number[] = [];
-            for (let i = 0; i < call.arguments.length; i++) {
-              // Simple heuristic: if variable was defined at or after source, might be tainted
-              taintedArgs.push(i);
-            }
+          if (!resolved || resolved.targetFile === filePath) continue;
 
-            if (taintedArgs.length > 0) {
-              flows.push({
-                sourceFile: filePath,
-                sourceLine: source.line,
-                sourceType: source.type,
-                targetFile: resolved.targetFile,
-                targetLine: call.location.line,
-                targetMethod: resolved.targetMethod,
-                flowType: 'call_arg',
-                taintedArgPositions: taintedArgs,
-              });
-            }
+          // Only proceed if the target file has any YAML-matched sinks at all.
+          // Skipping sink-free files prevents the cartesian explosion of flows into
+          // utility modules (AST helpers, string utilities, etc.) that have no
+          // dangerous operations.
+          const targetIR = this.fileIRs.get(resolved.targetFile);
+          if (!targetIR || targetIR.taint.sinks.length === 0) continue;
+
+          // Find the target method in the target file so we can locate sinks within it.
+          // `resolved.targetMethod` is a FQN like "ClassName.methodName"; we match on
+          // the suffix after the last dot.
+          const shortName = resolved.targetMethod.split('.').pop() ?? resolved.targetMethod;
+          let targetMethod: { start_line: number; end_line: number } | undefined;
+          for (const type of targetIR.types) {
+            const m = type.methods.find(m => m.name === shortName);
+            if (m) { targetMethod = m; break; }
+          }
+          if (!targetMethod) continue;
+
+          // Only emit a flow when at least one known sink falls inside the target method.
+          // This means `targetLine` now correctly points to an actual dangerous operation
+          // in the target file (not the caller's line in the source file).
+          const sinksInMethod = targetIR.taint.sinks.filter(
+            s => s.line >= targetMethod!.start_line && s.line <= targetMethod!.end_line,
+          );
+          if (sinksInMethod.length === 0) continue;
+
+          for (const sink of sinksInMethod) {
+            const key = `${filePath}:${source.line}→${resolved.targetFile}:${sink.line}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+
+            flows.push({
+              sourceFile: filePath,
+              sourceLine: source.line,
+              sourceType: source.type,
+              targetFile: resolved.targetFile,
+              targetLine: sink.line,           // actual sink line in target file
+              targetMethod: resolved.targetMethod,
+              flowType: 'call_arg',
+              taintedArgPositions: call.arguments.map((_, i) => i),
+            });
           }
         }
       }

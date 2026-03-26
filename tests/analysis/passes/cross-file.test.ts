@@ -152,7 +152,7 @@ describe('CrossFilePass — cross-file taint flows', () => {
     expect(path.confidence).toBe(0.7);
   });
 
-  it('uses default sink type sql_injection when target IR not found', () => {
+  it('skips flow when target IR not found (no sql_injection default)', () => {
     const flow: MockFlow = {
       sourceFile: 'src/A.java',
       sourceLine: 3,
@@ -166,11 +166,11 @@ describe('CrossFilePass — cross-file taint flows', () => {
       irMap: new Map(),  // no IR for Missing.java
     });
     const result = new CrossFilePass().run(pg, new Map());
-    expect(result.taintPaths[0].sink.type).toBe('sql_injection');
-    expect(result.taintPaths[0].sink.cwe).toBe('CWE-89');
+    // Flow is skipped — no default sql_injection fabrication
+    expect(result.taintPaths).toHaveLength(0);
   });
 
-  it('uses default sink type when matched sink not found at target line', () => {
+  it('skips flow when no matched sink at target line', () => {
     const flow: MockFlow = {
       sourceFile: 'src/A.java',
       sourceLine: 3,
@@ -185,7 +185,8 @@ describe('CrossFilePass — cross-file taint flows', () => {
       irMap: new Map([['src/B.java', irB]]),
     });
     const result = new CrossFilePass().run(pg, new Map());
-    expect(result.taintPaths[0].sink.type).toBe('sql_injection');
+    // Mismatched line: flow is skipped rather than defaulting to sql_injection
+    expect(result.taintPaths).toHaveLength(0);
   });
 
   it('falls back to empty string for code when sourceLines key missing', () => {
@@ -197,9 +198,14 @@ describe('CrossFilePass — cross-file taint flows', () => {
       targetLine: 1,
       targetMethod: 'foo',
     };
-    const pg = makeProjectGraph({ flows: [flow] });
-    // No sourceLines at all
+    const irB = makeIRWithSink('src/B.java', 1);  // sink at line 1 so flow is kept
+    const pg = makeProjectGraph({
+      flows: [flow],
+      irMap: new Map([['src/B.java', irB]]),
+    });
+    // No sourceLines at all — code fields should fall back to ''
     const result = new CrossFilePass().run(pg, new Map());
+    expect(result.taintPaths).toHaveLength(1);
     expect(result.taintPaths[0].source.code).toBe('');
     expect(result.taintPaths[0].sink.code).toBe('');
   });
@@ -213,7 +219,11 @@ describe('CrossFilePass — cross-file taint flows', () => {
       targetLine: 1,
       targetMethod: 'foo',
     };
-    const pg = makeProjectGraph({ flows: [flow] });
+    const irB = makeIRWithSink('src/B.java', 1);  // sink at line 1 so flow is kept
+    const pg = makeProjectGraph({
+      flows: [flow],
+      irMap: new Map([['src/B.java', irB]]),
+    });
     const sourceLines = new Map([
       ['src/A.java', ['String id = req.getParam("id");']],
       ['src/B.java', ['stmt.execute(id);']],
@@ -229,7 +239,13 @@ describe('CrossFilePass — cross-file taint flows', () => {
       { sourceFile: 'A.java', sourceLine: 3, sourceType: 'http_param', targetFile: 'C.java', targetLine: 4, targetMethod: 'm2' },
       { sourceFile: 'D.java', sourceLine: 5, sourceType: 'http_param', targetFile: 'E.java', targetLine: 6, targetMethod: 'm3' },
     ];
-    const pg = makeProjectGraph({ flows });
+    // Provide target IRs with sinks at the expected lines so all three flows are kept
+    const irMap = new Map([
+      ['B.java', makeIRWithSink('B.java', 2)],
+      ['C.java', makeIRWithSink('C.java', 4)],
+      ['E.java', makeIRWithSink('E.java', 6)],
+    ]);
+    const pg = makeProjectGraph({ flows, irMap });
     const result = new CrossFilePass().run(pg, new Map());
     expect(result.taintPaths.map(p => p.id)).toEqual(['cf-0', 'cf-1', 'cf-2']);
   });

@@ -39,15 +39,21 @@ export class CrossFilePass {
 
     // --- 1. Cross-file taint flows → TaintPath[] ----------------------------
     const flows = resolver.findCrossFileTaintFlows();
-    const taintPaths: TaintPath[] = flows.map((flow, idx) => {
+    const taintPaths: TaintPath[] = flows.flatMap((flow, idx) => {
       const srcLines = sourceLines.get(flow.sourceFile) ?? [];
       const tgtLines = sourceLines.get(flow.targetFile) ?? [];
 
-      // Look up matched sink from the target file's IR to get type + cwe
+      // Look up matched sink from the target file's IR to get type + cwe.
+      // Skip flows where no known sink exists at the target line — we never
+      // default to 'sql_injection' because that produces massive false positives
+      // for any TypeScript project that uses string manipulation helpers.
       const targetIR  = projectGraph.getIR(flow.targetFile);
-      const matchedSink = targetIR?.taint.sinks.find(s => s.line === flow.targetLine);
+      if (!targetIR || targetIR.taint.sinks.length === 0) return [];
 
-      return {
+      const matchedSink = targetIR.taint.sinks.find(s => s.line === flow.targetLine);
+      if (!matchedSink) return [];
+
+      return [{
         id: `cf-${idx}`,
         source: {
           file: flow.sourceFile,
@@ -58,8 +64,8 @@ export class CrossFilePass {
         sink: {
           file: flow.targetFile,
           line: flow.targetLine,
-          type: (matchedSink?.type ?? 'sql_injection') as SinkType,
-          cwe:  matchedSink?.cwe ?? 'CWE-89',
+          type: matchedSink.type as SinkType,
+          cwe:  matchedSink.cwe,
           code: tgtLines[flow.targetLine - 1] ?? '',
         },
         hops: [
@@ -81,7 +87,7 @@ export class CrossFilePass {
         sanitizers_in_path: [],
         path_exists: true,
         confidence: 0.7,
-      };
+      }];
     });
 
     // --- 2. Resolved inter-file calls → CrossFileCall[] --------------------
