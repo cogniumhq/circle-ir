@@ -12,7 +12,7 @@ Working plan and task tracker for the circle-ir SAST library.
 | Phase | Status | Focus |
 |-------|--------|-------|
 | 0 — Architecture foundation | ✅ Complete | CodeGraph, AnalysisPipeline, ProjectGraph, taxonomy types |
-| 1 — High-impact SAST passes | 🔄 In Progress | Groups 1-2 done (10 passes); Groups 3-4 pending |
+| 1 — High-impact SAST passes | 🔄 In Progress | Groups 1-3 done (13 passes); Group 4 pending |
 | 2 — Metrics engine | Pending | MetricRunner, 38 metrics, `cognium metrics` command |
 | 4 — Advanced graphs + passes | Pending | Dominator tree, exception flow, type hierarchy wired |
 
@@ -23,7 +23,7 @@ Working plan and task tracker for the circle-ir SAST library.
 
 ## Phase 0 — Architecture Foundation ✅ Complete
 
-All items complete. 897/897 tests passing.
+All items complete. 921/921 tests passing.
 
 - [x] **CodeGraph** (`src/graph/code-graph.ts`) — lazy Map indexes; `loopBodies()` via CFG back-edges
 - [x] **AnalysisPass interface + AnalysisPipeline** — 6 passes, `category: PassCategory`, `context.addFinding()`, `PipelineRunResult { results, findings }`
@@ -54,14 +54,12 @@ Passes that need only `ast` and/or `cfg` — no new graph required.
 - [x] **#48 `sync-io-async`** (CWE-1050, warning) — blocking I/O inside async function
 - [x] **#50 `string-concat-loop`** (CWE-1046, warning) — `string +=` inside `loopBodies()`
 
-### Group 3: Scope graph + 3 passes (~200 LOC graph + ~550 LOC passes)
+### Group 3: Scope graph + 3 passes ✅ Done (v3.9.3)
 
-New graph: **scope table** (variable → declaring scope + line range, built from AST).
-
-- [ ] Build `src/graph/scope-graph.ts` — `ScopeGraph` lazy wrapper over symbol table extracted from AST
-- [ ] **#79 `variable-shadowing`** (CWE-1109, note) — inner scope re-declares outer name
-- [ ] **#81 `leaked-global`** (CWE-1109, warning) — assignment without declaration (JS/Python accidental global)
-- [ ] **#82 `unused-variable`** (CWE-561, note) — declared, no reads on any reachable path
+- [x] Build `src/graph/scope-graph.ts` — `ScopeGraph` with declaration-keyword awareness; `defsInMethod()` + `hasDeclaredDef()`
+- [x] **#79 `variable-shadowing`** (CWE-1109, warning) — inner scope re-declares outer name
+- [x] **#81 `leaked-global`** (CWE-1109, warning) — assignment without declaration (JS/TS accidental global)
+- [x] **#82 `unused-variable`** (CWE-561, note) — declared, no reads on any reachable path
 
 ### Group 4: Import graph + 4 passes (~200 LOC graph + ~560 LOC passes)
 
