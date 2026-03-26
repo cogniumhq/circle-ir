@@ -102,7 +102,7 @@ All 19 passes operate on the `taint` graph. SARIF level: `error`.
 
 | # | rule_id | CWE | level | graphs | status | Description |
 |---|---------|-----|-------|--------|--------|-------------|
-| 33 | `stale-doc-ref` | — | note | ast, imports | phase-1 | Doc comment references a symbol that no longer exists |
+| 33 | `stale-doc-ref` | — | note | ast, imports | shipped | Doc comment references a symbol that no longer exists |
 | 35 | `missing-public-doc` | — | note | ast | shipped | Public/exported function or type has no doc block |
 | 36 | `todo-in-prod` | — | note | ast | shipped | TODO/FIXME/HACK comment in non-test production file |
 | 30 | `doc-param-mismatch` | — | warning | ast, dfg | llm-only | @param documented but not in signature, or vice versa |
@@ -124,9 +124,9 @@ All 19 passes operate on the `taint` graph. SARIF level: `error`.
 | 62 | `deep-inheritance` | CWE-1086 | note | inherit | phase-4 | Inheritance depth > 5 levels |
 | 64 | `missing-override` | — | warning | inherit, ast | phase-4 | Method matches supertype signature but lacks @Override annotation |
 | 66 | `unused-interface-method` | — | note | inherit, cg | phase-4 | Interface method declared but never called through that interface |
-| 68 | `circular-dependency` | CWE-1047 | warning | imports | phase-1 | Cycle in module/package import graph (Tarjan's SCC) |
-| 71 | `orphan-module` | — | note | imports | phase-1 | File has no incoming imports and is not a declared entry point |
-| 72 | `dependency-fan-out` | — | note | imports | phase-1 | Module imports 20+ other modules (high efferent coupling) |
+| 68 | `circular-dependency` | CWE-1047 | warning | imports | shipped | Cycle in module/package import graph (Tarjan's SCC) |
+| 71 | `orphan-module` | — | note | imports | shipped | File has no incoming imports and is not a declared entry point |
+| 72 | `dependency-fan-out` | — | note | imports | shipped | Module imports 20+ other modules (high efferent coupling) |
 
 ---
 
@@ -135,7 +135,7 @@ All 19 passes operate on the `taint` graph. SARIF level: `error`.
 | Phase | Focus | Passes | New graphs |
 |-------|-------|--------|------------|
 | **0 (done)** | Architecture foundation | — | CodeGraph lazy indexes, AnalysisPipeline, ProjectGraph, CrossFilePass, taxonomy types |
-| **1 (in progress)** | High-impact SAST passes | ~~#22, #24, #45, #35, #36, #20, #21, #28, #48, #50, #79, #81, #82~~ ✓, #33, #68, #71, #72 | import graph |
+| **1 (done)** | High-impact SAST passes | ~~#22, #24, #45, #35, #36, #20, #21, #28, #48, #50, #79, #81, #82, #33, #68, #71, #72~~ ✓ | scope graph, import graph |
 | **2** | Metrics engine | — (metrics, not passes) | `cognium metrics` command; MetricRunner; 38 metrics |
 | **4** | Advanced graphs + passes | #23, #25, #26, #46, #47, #53, #54, #62, #64, #66, #74, #75, #76, P22, P33 | dominator tree, exception flow, type hierarchy wired to taint |
 

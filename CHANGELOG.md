@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.9.4] - 2026-03-25
+
+### Added
+
+- **Phase 1 Group 4: four new analysis passes + ImportGraph infrastructure** — completing Phase 1:
+  - **`ImportGraph`** (`src/graph/import-graph.ts`) — directed file→file import graph built from per-file `ir.imports`. Resolves relative imports (starting with `.`) against the importer's directory with extension fallback (`.ts`, `.tsx`, `.js`, `.jsx`, `.py`, `.java`, `.rs`). Exposes `edgesFrom()`, `edgesTo()`, `findCycles()` (Tarjan's SCC — returns SCCs with size ≥ 2), and `findOrphans()` (files with zero incoming edges that are not recognized entry points). Exported from `src/graph/index.ts`.
+  - **`DependencyFanOutPass`** (`dependency-fan-out`, architecture, low/note) — per-file pass; flags any module with ≥ 20 import entries (`ir.imports.length`). High fan-out is a coupling smell that makes modules harder to test and modify independently. Threshold is `FAN_OUT_THRESHOLD = 20`.
+  - **`StaleDocRefPass`** (`stale-doc-ref`, maintainability, low/note) — per-file pass; scans all `/** ... */` doc comment blocks for `{@link Symbol}` and `@see Symbol` references. Normalizes qualified references (strips `#method` fragment and class prefix) then checks each against the known-symbol set (`ir.types[].name` + `ir.imports[].imported_name`). Unknown references are flagged.
+  - **`CircularDependencyPass`** (`circular-dependency`, CWE-1047, architecture, medium/warning) — project-level pass (like `CrossFilePass`); accepts `ProjectGraph` + `ImportGraph` and runs `importGraph.findCycles()`. Each cycle produces one finding anchored to the alphabetically-first file in the cycle with all cycle members listed in `evidence.cycle`. Findings are attached to per-file `CircleIR.findings`.
+  - **`OrphanModulePass`** (`orphan-module`, architecture, low/note) — project-level pass; runs `importGraph.findOrphans()`. Each orphan file gets one finding. Entry points (filename base matching `index|main|app|server|mod`) are excluded. Findings are attached to per-file `CircleIR.findings`.
+- **Pipeline updated**: 19 → 21 per-file passes (`DependencyFanOutPass`, `StaleDocRefPass` added after `UnusedVariablePass`). `CircularDependencyPass` and `OrphanModulePass` run as post-steps in `analyzeProject()` after `CrossFilePass`.
+- **Test count**: 921 → 956 (+35 new tests across 5 new test files: `import-graph.test.ts`, `dependency-fan-out.test.ts`, `stale-doc-ref.test.ts`, `circular-dependency.test.ts`, `orphan-module.test.ts`)
+
 ## [3.9.3] - 2026-03-25
 
 ### Added

@@ -12,7 +12,7 @@ Working plan and task tracker for the circle-ir SAST library.
 | Phase | Status | Focus |
 |-------|--------|-------|
 | 0 — Architecture foundation | ✅ Complete | CodeGraph, AnalysisPipeline, ProjectGraph, taxonomy types |
-| 1 — High-impact SAST passes | 🔄 In Progress | Groups 1-3 done (13 passes); Group 4 pending |
+| 1 — High-impact SAST passes | ✅ Complete | All 17 passes done (Groups 1-4, v3.9.4) |
 | 2 — Metrics engine | Pending | MetricRunner, 38 metrics, `cognium metrics` command |
 | 4 — Advanced graphs + passes | Pending | Dominator tree, exception flow, type hierarchy wired |
 
@@ -23,7 +23,7 @@ Working plan and task tracker for the circle-ir SAST library.
 
 ## Phase 0 — Architecture Foundation ✅ Complete
 
-All items complete. 921/921 tests passing.
+All items complete. 956/956 tests passing.
 
 - [x] **CodeGraph** (`src/graph/code-graph.ts`) — lazy Map indexes; `loopBodies()` via CFG back-edges
 - [x] **AnalysisPass interface + AnalysisPipeline** — 6 passes, `category: PassCategory`, `context.addFinding()`, `PipelineRunResult { results, findings }`
@@ -32,7 +32,7 @@ All items complete. 921/921 tests passing.
 
 ---
 
-## Phase 1 — High-Impact SAST Passes 🔄 In Progress
+## Phase 1 — High-Impact SAST Passes ✅ Complete
 
 **Goal:** Every developer sees value on first scan. All passes use existing graphs or one new cheap graph.
 
@@ -61,15 +61,15 @@ Passes that need only `ast` and/or `cfg` — no new graph required.
 - [x] **#81 `leaked-global`** (CWE-1109, warning) — assignment without declaration (JS/TS accidental global)
 - [x] **#82 `unused-variable`** (CWE-561, note) — declared, no reads on any reachable path
 
-### Group 4: Import graph + 4 passes (~200 LOC graph + ~560 LOC passes)
+### Group 4: Import graph + 4 passes ✅ Done (v3.9.4)
 
 New graph: **import/module graph** (file → imported files, from `CircleIR.imports`; cross-file via `ProjectGraph`).
 
-- [ ] Build `src/graph/import-graph.ts` — `ImportGraph` wrapping per-file imports into a directed graph; Tarjan's SCC for cycle detection
-- [ ] **#68 `circular-dependency`** (CWE-1047, warning) — cycle in module import graph
-- [ ] **#71 `orphan-module`** (—, note) — file with no incoming imports and not an entry point
-- [ ] **#72 `dependency-fan-out`** (—, note) — module imports 20+ other modules
-- [ ] **#33 `stale-doc-ref`** (—, note) — doc comment references symbol not in scope/imports
+- [x] Build `src/graph/import-graph.ts` — `ImportGraph` wrapping per-file imports into a directed graph; Tarjan's SCC for cycle detection
+- [x] **#68 `circular-dependency`** (CWE-1047, warning) — cycle in module import graph
+- [x] **#71 `orphan-module`** (—, note) — file with no incoming imports and not an entry point
+- [x] **#72 `dependency-fan-out`** (—, note) — module imports 20+ other modules
+- [x] **#33 `stale-doc-ref`** (—, note) — doc comment references symbol not in scope/imports
 
 ### Phase 1 Gate
 Scan 5 real-world repos. New passes must find real issues with ≤5% false positives per category.
@@ -137,9 +137,9 @@ Numbers follow COGNIUM_IMPLEMENTATION_GUIDE §10 Week 12-14.
 
 ## Ongoing: Architecture Improvements
 
-- [ ] **P2**: Pass-level unit tests (`tests/analysis/passes/*.test.ts`) — each pass testable with minimal `PassContext` fixture; currently only exercised end-to-end
-- [ ] **P2**: `ScopeGraph` implementation for Phase 1 Group 3 (above)
-- [ ] **P2**: `ImportGraph` implementation for Phase 1 Group 4 (above)
+- [x] **P2**: Pass-level unit tests (`tests/analysis/passes/*.test.ts`) — each pass testable with minimal `PassContext` fixture
+- [x] **P2**: `ScopeGraph` implementation for Phase 1 Group 3 (done in v3.9.3)
+- [x] **P2**: `ImportGraph` implementation for Phase 1 Group 4 (done in v3.9.4)
 - [ ] **P2**: Implement type resolution TODO in `src/languages/plugins/java.ts:427`
 
 ---
