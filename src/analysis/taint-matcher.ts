@@ -338,10 +338,17 @@ function matchesSourcePattern(call: CallInfo, pattern: SourcePattern): boolean {
 
     // If class is specified, check receiver
     if (pattern.class && pattern.class !== 'constructor') {
+      // A bare function call with no receiver can never match a class-qualified method.
+      // Without this guard, ANY call named `get()` matches ALL Map/HashMap/Properties
+      // patterns, producing false positives for unrelated local functions (e.g. a
+      // metric helper `const get = (name) => acc.find(...)`).
+      if (!call.receiver) {
+        return false;
+      }
       // The receiver might be a variable name, not the class name
       // For now, we do a simple match - in a full implementation,
       // we'd need type inference
-      if (call.receiver && !receiverMightBeClass(call.receiver, pattern.class)) {
+      if (!receiverMightBeClass(call.receiver, pattern.class)) {
         return false;
       }
     }

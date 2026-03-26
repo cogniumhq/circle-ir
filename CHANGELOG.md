@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.9.7] - 2026-03-26
+
+### Fixed
+
+- **`external_taint_escape` false positives eliminated (4 → 0)** — Two root causes fixed:
+  - `InterproceduralPass` Scenario B (sources present, no YAML sinks) now excludes **all**
+    `interprocedural_param` sources, not only those with `confidence < 0.6`.
+    `interprocedural_param` is a speculative "this parameter might be tainted if called with
+    tainted data" signal; real cross-file flows from confirmed external inputs are surfaced by
+    `CrossFilePass`.
+  - `taint-matcher.ts` `matchesSourcePattern()` now returns `false` when a pattern specifies
+    a `class` but the call has no receiver.  The previous code skipped the receiver check
+    entirely when `call.receiver` was absent, allowing any bare `get()` function call to match
+    **all** `Map/HashMap/Properties` source patterns regardless of receiver type.  This caused
+    local helper functions such as `const get = (name) => acc.find(...)` to be classified as
+    `plugin_param`/`http_param`/`config_param` sources, producing cascading false positives.
+
+- **Cross-file taint false positives eliminated (1,542 → 0)** — Two root causes fixed:
+  - `CrossFilePass` now uses `flatMap` with early-return guards: flows where the target IR
+    is missing, has no sinks, or has no matched sink at the target line are silently dropped.
+    The previous `matchedSink?.type ?? 'sql_injection'` default was labelling every
+    speculative cross-file flow as `sql_injection`.
+  - `CrossFileResolver.findCrossFileTaintFlows()` now skips `interprocedural_param` sources
+    (same rationale as above), requires the target method to exist in the target file's IR,
+    and only emits a flow when a known YAML sink falls within the target method's line range.
+    `targetLine` is now set to the actual sink line in the target file rather than the call
+    site line in the source file.
+
+[3.9.7]: https://github.com/cogniumhq/circle-ir/compare/v3.9.6...v3.9.7
+
 ## [3.9.6] - 2026-03-26
 
 ### Fixed
