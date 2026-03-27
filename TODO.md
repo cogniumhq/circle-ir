@@ -111,13 +111,13 @@ Numbers follow COGNIUM_IMPLEMENTATION_GUIDE §10 Week 12-14.
 
 ### New graphs
 
-- [ ] **Dominator tree** (`src/graph/dominator-graph.ts`) — Lengauer-Tarjan from CFG; `dominates(a, b)`, `postDominates(a, b)`, `immediateDominator(n)`
+- [x] **Dominator tree** (`src/graph/dominator-graph.ts`) — Cooper et al. algorithm; `dominates(a, b)`, `strictlyDominates(a, b)`, `immediateDominator(n)`, `dominated(n)` (done in v3.9.8)
 - [ ] **Exception flow graph** (`src/graph/exception-graph.ts`) — throw → catch edges; uncaught propagation via call graph
 - [ ] **TypeHierarchy wired to taint matching** — pass `TypeHierarchyResolver` to `TaintMatcherPass`; `PreparedStatement.execute()` matched as subtype of `Statement.execute()` without duplicate configs (see `src/resolution/type-hierarchy.ts:couldBeType()`)
 
 ### Reliability passes (dominator + exception)
 
-- [ ] **#23 `infinite-loop`** (CWE-835) — CFG cycle with no exit edge dependent on mutable state
+- [x] **#23 `infinite-loop`** (CWE-835) — CFG cycle with no exit edge (done in v3.9.8)
 - [ ] **#25 `double-close`** (CWE-675) — resource `close()` reachable on 2+ paths that both execute
 - [ ] **#26 `use-after-close`** (CWE-672) — read of variable after the resource was released
 - [ ] **#53 `missing-guard-dom`** (—) — auth check doesn't dominate sensitive operation
@@ -128,14 +128,14 @@ Numbers follow COGNIUM_IMPLEMENTATION_GUIDE §10 Week 12-14.
 
 ### Performance passes (existing graphs)
 
-- [ ] **#46 `redundant-loop-computation`** (CWE-1050) — loop-invariant expression computed every iteration
-- [ ] **#47 `unbounded-collection`** (CWE-770) — collection grows in loop with no size check
-- [ ] **P22 `serial-await`** (—) — sequential awaits with no data dependency (use Promise.all)
-- [ ] **P33 `react-inline-jsx`** (—) — inline object/function in JSX props (defeats React.memo)
+- [x] **#46 `redundant-loop-computation`** (CWE-1050) — loop-invariant `.length`/`.size()`/`Math.*` (done in v3.9.8)
+- [x] **#47 `unbounded-collection`** (CWE-770) — collection grows in loop with no size check (done in v3.9.8)
+- [x] **P22 `serial-await`** (—) — sequential awaits with no data dependency, JS/TS only (done in v3.9.8)
+- [x] **P33 `react-inline-jsx`** (—) — inline object/function in JSX props (done in v3.9.8)
 
 ### Architecture passes (type hierarchy)
 
-- [ ] **#62 `deep-inheritance`** (CWE-1086) — inheritance depth > 5 levels
+- [x] **#62 `deep-inheritance`** (CWE-1086) — inheritance depth > 5 levels (done in v3.9.8)
 - [ ] **#64 `missing-override`** (—) — method matches supertype signature, lacks `@Override`
 - [ ] **#66 `unused-interface-method`** (—) — interface method never called through that interface
 
@@ -199,12 +199,6 @@ Current coverage: ~77%. Target: ≥75% (met).
 - [ ] Add Axum framework patterns
 - [ ] Add SQLx sink patterns
 - [ ] Add Reqwest SSRF patterns
-
----
-
-## Code Quality
-
-- [ ] **P2**: Remove or document `advisory-db.json` (1.1 MB file — purpose unclear)
 
 ---
 

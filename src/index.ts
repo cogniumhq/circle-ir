@@ -141,6 +141,9 @@ export {
   type RuleInfo,
 } from './analysis/rules.js';
 
+// Graph utilities
+export { DominatorGraph } from './graph/dominator-graph.js';
+
 // Resolution utilities
 export {
   TypeHierarchyResolver,

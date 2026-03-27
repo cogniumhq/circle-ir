@@ -67,7 +67,7 @@ All 19 passes operate on the `taint` graph. SARIF level: `error`.
 | 20 | `null-deref` | CWE-476 | error | dfg, cfg | shipped | Nullable source reaches dereference with no null guard on all CFG paths |
 | 21 | `resource-leak` | CWE-772 | error | cfg, dfg | shipped | Resource opened, not closed on at least one exception exit path |
 | 22 | `dead-code` | CWE-561 | warning | cfg | shipped | CFG block unreachable from any entry point |
-| 23 | `infinite-loop` | CWE-835 | error | cfg | phase-4 | CFG cycle with no exit edge dependent on mutable state |
+| 23 | `infinite-loop` | CWE-835 | warning | cfg | shipped | CFG loop with no reachable exit edge (back-edge analysis + keyword fallback) |
 | 24 | `missing-await` | CWE-252 | warning | ast, cg | shipped | Async function called without `await`; Promise result discarded |
 | 25 | `double-close` | CWE-675 | warning | cfg, dfg | phase-4 | Resource `close()` reachable on 2+ paths that both execute |
 | 26 | `use-after-close` | CWE-672 | error | dfg, cfg | phase-4 | Read of variable after the resource it references was released |
@@ -90,11 +90,11 @@ All 19 passes operate on the `taint` graph. SARIF level: `error`.
 | # | rule_id | CWE | level | graphs | status | Description |
 |---|---------|-----|-------|--------|--------|-------------|
 | 45 | `n-plus-one` | CWE-1049 | warning | cfg, cg | shipped | DB or external API call inside a loop body |
-| 46 | `redundant-loop-computation` | CWE-1050 | note | dfg, cfg | phase-4 | Loop-invariant expression computed on every iteration |
-| 47 | `unbounded-collection` | CWE-770 | warning | cfg, dfg | phase-4 | Collection grows inside loop with no size check or eviction |
+| 46 | `redundant-loop-computation` | CWE-1050 | note | dfg, cfg | shipped | Loop-invariant `.length`/`.size()`/`Math.*` recomputed every iteration |
+| 47 | `unbounded-collection` | CWE-770 | warning | cfg, calls | shipped | Collection grows inside loop with no size check or clear |
 | 49 | `unnecessary-object-hotpath` | — | note | cfg, ast | llm-only | Object construction in loop with invariant constructor args |
-| P22 | `serial-await` | — | note | dfg, cfg | phase-4 | Sequential awaits with no data dependency between them (use Promise.all) |
-| P33 | `react-inline-jsx` | — | note | ast | phase-4 | Inline object/function in JSX props (defeats React.memo) |
+| P22 | `serial-await` | — | note | dfg, ast | shipped | Sequential awaits with no data dependency (JS/TS only; suggest Promise.all) |
+| P33 | `react-inline-jsx` | — | note | ast | shipped | Inline object/function in JSX props (defeats React.memo; JS/TS only) |
 
 ---
 
@@ -121,7 +121,7 @@ All 19 passes operate on the `taint` graph. SARIF level: `error`.
 
 | # | rule_id | CWE | level | graphs | status | Description |
 |---|---------|-----|-------|--------|--------|-------------|
-| 62 | `deep-inheritance` | CWE-1086 | note | inherit | phase-4 | Inheritance depth > 5 levels |
+| 62 | `deep-inheritance` | CWE-1086 | warning | types | shipped | Inheritance depth > 5 levels (walks ir.types extends chain) |
 | 64 | `missing-override` | — | warning | inherit, ast | phase-4 | Method matches supertype signature but lacks @Override annotation |
 | 66 | `unused-interface-method` | — | note | inherit, cg | phase-4 | Interface method declared but never called through that interface |
 | 68 | `circular-dependency` | CWE-1047 | warning | imports | shipped | Cycle in module/package import graph (Tarjan's SCC) |

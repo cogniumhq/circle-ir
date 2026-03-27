@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.9.8] - 2026-03-26
+
+### Added
+
+- **`DominatorGraph`** — Cooper et al. "A Simple, Fast Dominance Algorithm" (2001) implementation.
+  Computes the dominator tree for any CFG in O(n²) time. Exported from `circle-ir` as `DominatorGraph`.
+  Public API: `dominates(a, b)`, `strictlyDominates(a, b)`, `immediateDominator(blockId)`, `dominated(blockId)`.
+
+- **`infinite-loop` pass (CWE-835, reliability)** — Detects loops with no reachable exit edge.
+  Uses CFG back-edges to identify loop bodies, then checks for exit edges or exit keywords
+  (`return`, `throw`, `break`) as a text-level fallback.
+
+- **`deep-inheritance` pass (CWE-1086, architecture)** — Flags class inheritance depth > 5.
+  Walks `ir.types[*].extends` chains, guards against cycles, emits a low-severity finding at the
+  class declaration site.
+
+- **`redundant-loop-computation` pass (CWE-1050, performance)** — Detects loop-invariant
+  expressions recomputed every iteration: `.length` / `.size()` / `.count()` on variables not
+  modified in the loop body; `Object.keys/values/entries(x)` on invariant `x`; `Math.sqrt/pow/abs(x)`.
+
+- **`unbounded-collection` pass (CWE-770, performance)** — Detects collections that grow
+  inside a loop with no size-limit check or clear/remove operation. Covers `add`/`push`/`put`/
+  `append`/`insert` in Java, JS/TS, Python, Rust.
+
+- **`serial-await` pass (performance, JS/TS only)** — Detects sequential `await` expressions
+  with no data dependency between them, suggesting `Promise.all()` parallelisation.
+
+- **`react-inline-jsx` pass (performance, JS/TS only)** — Detects inline object literals and
+  arrow functions in JSX props, which create new references on every render and defeat memoization.
+  Skips `style={{` (idiomatic) and `key=` / `ref=`.
+
+[3.9.8]: https://github.com/cogniumhq/circle-ir/compare/v3.9.7...v3.9.8
+
 ## [3.9.7] - 2026-03-26
 
 ### Fixed
