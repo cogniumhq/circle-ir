@@ -197,7 +197,14 @@ export function filterCleanVariableSinks(
     const callsAtSink = callsByLine.get(sink.line) ?? [];
     const isInSynchronizedBlock = synchronizedLines?.has(sink.line) ?? false;
 
-    for (const call of callsAtSink) {
+    // Only evaluate the call that matched the sink pattern — not nested inner calls at the
+    // same line (e.g. System.getProperty("user.dir") inside r.exec(args,...,new File(...))).
+    // sink.method is set by findSinks to call.method_name; language-sources sinks also carry it.
+    const relevantCalls = sink.method
+      ? callsAtSink.filter(c => c.method_name === sink.method)
+      : callsAtSink;
+
+    for (const call of relevantCalls) {
       let allArgsAreClean = true;
       const methodName = call.in_method;
 

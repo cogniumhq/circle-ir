@@ -382,3 +382,140 @@ describe('SinkFilterPass — Stage 6: JavaScript XSS FP reduction', () => {
     expect(result.sinks).toHaveLength(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Tests: Stage 3 — clean variable filter (nested inner-call false positive)
+// ---------------------------------------------------------------------------
+// Regression for: Runtime.exec() not recognized as command_injection sink when
+// nested inner calls at the same source line (e.g. System.getProperty("user.dir")
+// inside r.exec(args, argsEnv, new File(System.getProperty("user.dir")))) have only
+// literal arguments, incorrectly causing the outer exec() sink to be filtered out.
+
+describe('SinkFilterPass — Stage 3: nested inner-call does not suppress outer sink', () => {
+  it('keeps exec() sink when a nested inner call on the same line has only literal args', () => {
+    // Simulates: r.exec(args, argsEnv, new java.io.File(System.getProperty("user.dir")))
+    // Before fix: System.getProperty("user.dir") at same line had all-literal args, which
+    // caused filterCleanVariableSinks to return false for the exec() sink.
+    const execSink: TaintSink = {
+      type: 'command_injection',
+      cwe:  'CWE-78',
+      line: 10,
+      location: 'r.exec() in doPost',
+      method:   'exec',
+      confidence: 0.9,
+    };
+    const ir = makeIR();
+    // Outer call: r.exec(args, argsEnv, <complex expression>)
+    ir.calls.push({
+      method_name: 'exec',
+      receiver:    'r',
+      arguments: [
+        { position: 0, expression: 'args',    variable: 'args',    literal: null },
+        { position: 1, expression: 'argsEnv', variable: 'argsEnv', literal: null },
+        { position: 2, expression: 'new java.io.File(System.getProperty("user.dir"))', variable: 'File', literal: null },
+      ],
+      location: { line: 10, column: 4 },
+      in_method: 'doPost',
+    });
+    // Inner call: System.getProperty("user.dir") — all-literal argument on the same line
+    ir.calls.push({
+      method_name: 'getProperty',
+      receiver:    'System',
+      arguments: [
+        { position: 0, expression: '"user.dir"', variable: null, literal: 'user.dir' },
+      ],
+      location: { line: 10, column: 0 },
+      in_method: 'doPost',
+    });
+    const ctx = makeCtx({ ir, sinks: [execSink] });
+    const result = new SinkFilterPass().run(ctx);
+    expect(result.sinks).toHaveLength(1);
+    expect(result.sinks[0].type).toBe('command_injection');
+  });
+
+  it('still filters exec() sink when its OWN args are all string literals (no taint possible)', () => {
+    // r.exec("ls -la") — hardcoded command, no user input
+    const execSink: TaintSink = {
+      type: 'command_injection',
+      cwe:  'CWE-78',
+      line: 10,
+      location: 'r.exec() in doPost',
+      method:   'exec',
+      confidence: 0.9,
+    };
+    const ir = makeIR();
+    ir.calls.push({
+      method_name: 'exec',
+      receiver:    'r',
+      arguments: [
+        { position: 0, expression: '"ls -la"', variable: null, literal: 'ls -la' },
+      ],
+      location: { line: 10, column: 4 },
+      in_method: 'doPost',
+    });
+    const ctx = makeCtx({ ir, sinks: [execSink] });
+    const result = new SinkFilterPass().run(ctx);
+    expect(result.sinks).toHaveLength(0);
+  });
+
+  it('keeps exec() sink when it has a variable arg and no inner calls', () => {
+    // r.exec(cmd) — cmd is user-controlled (unknown variable)
+    const execSink: TaintSink = {
+      type: 'command_injection',
+      cwe:  'CWE-78',
+      line: 10,
+      location: 'r.exec() in doPost',
+      method:   'exec',
+      confidence: 0.9,
+    };
+    const ir = makeIR();
+    ir.calls.push({
+      method_name: 'exec',
+      receiver:    'r',
+      arguments: [
+        { position: 0, expression: 'cmd', variable: 'cmd', literal: null },
+      ],
+      location: { line: 10, column: 4 },
+      in_method: 'doPost',
+    });
+    const ctx = makeCtx({ ir, sinks: [execSink] });
+    const result = new SinkFilterPass().run(ctx);
+    expect(result.sinks).toHaveLength(1);
+  });
+
+  it('keeps exec() sink for the exec(cmd+bar, argsEnv, new File(...)) overload with inner literal call', () => {
+    // r.exec(cmd + bar, argsEnv, new java.io.File(System.getProperty("user.dir")))
+    const execSink: TaintSink = {
+      type: 'command_injection',
+      cwe:  'CWE-78',
+      line: 10,
+      location: 'r.exec() in doPost',
+      method:   'exec',
+      confidence: 0.9,
+    };
+    const ir = makeIR();
+    ir.calls.push({
+      method_name: 'exec',
+      receiver:    'r',
+      arguments: [
+        { position: 0, expression: 'cmd + bar', variable: 'cmd',    literal: null },
+        { position: 1, expression: 'argsEnv',   variable: 'argsEnv', literal: null },
+        { position: 2, expression: 'new java.io.File(System.getProperty("user.dir"))', variable: 'File', literal: null },
+      ],
+      location: { line: 10, column: 4 },
+      in_method: 'doPost',
+    });
+    ir.calls.push({
+      method_name: 'getProperty',
+      receiver:    'System',
+      arguments: [
+        { position: 0, expression: '"user.dir"', variable: null, literal: 'user.dir' },
+      ],
+      location: { line: 10, column: 0 },
+      in_method: 'doPost',
+    });
+    const ctx = makeCtx({ ir, sinks: [execSink] });
+    const result = new SinkFilterPass().run(ctx);
+    expect(result.sinks).toHaveLength(1);
+  });
+});

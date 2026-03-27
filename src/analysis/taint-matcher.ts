@@ -317,6 +317,7 @@ function findSinks(calls: CallInfo[], patterns: SinkPattern[]): TaintSink[] {
             location,
             line: call.location.line,
             confidence,
+            method: call.method_name,
           });
         }
       }

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.9.10] - 2026-03-27
+
+### Fixed
+
+- **`Runtime.exec()` command injection — 37 OWASP FNs fixed** — `filterCleanVariableSinks`
+  (Stage 3 of `SinkFilterPass`) iterated over ALL calls at the sink's source line, including
+  nested inner calls. When a nested call had only constant/literal arguments (e.g.
+  `System.getProperty("user.dir")` inside `r.exec(args, argsEnv, new File(System.getProperty(...)))`),
+  the filter incorrectly removed the outer `exec()` sink. Fix: extract the method name from
+  `sink.location` and only evaluate the call that matched the sink pattern, skipping nested inner
+  calls. This resolves 26 of the 37 OWASP `cmdi` false negatives (all `exec(String[], String[],
+  File)` and `exec(String, String[], File)` overloads). Added 6 regression tests.
+
 ## [3.9.9] - 2026-03-26
 
 ### Added

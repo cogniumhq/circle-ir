@@ -99,6 +99,48 @@ public class Service {
     expect(cmdSink!.cwe).toBe('CWE-78');
   });
 
+  it('should detect command injection sink for Runtime.exec() via local variable receiver', async () => {
+    // Regression: r.exec(cmd) where r is a local Runtime variable was not detected
+    // as a sink when analysed without the WASM filter pipeline.
+    const code = `
+public class Service {
+    public void execute(String cmd) {
+        Runtime r = Runtime.getRuntime();
+        r.exec(cmd);
+    }
+}
+`;
+    const tree = await parse(code, 'java');
+    const calls = extractCalls(tree);
+    const types = extractTypes(tree);
+    const taint = analyzeTaint(calls, types);
+
+    const cmdSink = taint.sinks.find(s => s.type === 'command_injection');
+    expect(cmdSink).toBeDefined();
+    expect(cmdSink!.cwe).toBe('CWE-78');
+  });
+
+  it('should detect command injection sink for Runtime.exec(args, env, dir) via local variable receiver', async () => {
+    // Regression: the 3-arg exec overload with System.getProperty("user.dir") as an
+    // inner call at the same line caused filterCleanVariableSinks to remove the sink.
+    const code = `
+public class Service {
+    public void execute(String[] args, String[] env) {
+        Runtime r = Runtime.getRuntime();
+        r.exec(args, env, new java.io.File(System.getProperty("user.dir")));
+    }
+}
+`;
+    const tree = await parse(code, 'java');
+    const calls = extractCalls(tree);
+    const types = extractTypes(tree);
+    const taint = analyzeTaint(calls, types);
+
+    const cmdSink = taint.sinks.find(s => s.type === 'command_injection');
+    expect(cmdSink).toBeDefined();
+    expect(cmdSink!.cwe).toBe('CWE-78');
+  });
+
   it('should detect path traversal sink', async () => {
     const code = `
 public class FileService {
