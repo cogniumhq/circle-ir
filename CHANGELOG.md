@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.9.9] - 2026-03-26
+
+### Added
+
+- **`ExceptionFlowGraph`** — new graph class wrapping CFG exception edges (`type === 'exception'`).
+  Maps try-body entry blocks to catch-handler entry blocks. Public API: `hasTryCatch`, `pairs`,
+  `isCatchEntry(id)`, `isTryEntry(id)`, `catchBlocksFor(tryEntryId)`, `tryBlockFor(catchEntryId)`.
+  Exported from `circle-ir` as `ExceptionFlowGraph` + `TryCatchInfo`.
+
+- **`swallowed-exception` pass (CWE-390, reliability, medium)** — Detects catch blocks that
+  silently discard exceptions: no re-throw, no logging call, no error return. Uses `ExceptionFlowGraph`
+  to locate catch handler entry lines, then brace-walks the source text to find the catch body bounds.
+  Languages: Java, JS/TS, Python.
+
+- **`broad-catch` pass (CWE-396, reliability, low)** — Detects catch clauses that catch base
+  exception types (`Exception`, `Throwable`, `RuntimeException`, `Error` in Java; bare `except:` or
+  `except Exception:` in Python) rather than specific subtypes. Languages: Java, Python.
+
+- **`unhandled-exception` pass (CWE-390, reliability, medium)** — Detects explicit `throw`/`raise`
+  statements not covered by any try/catch in the same function. Uses `ExceptionFlowGraph` to build
+  covered line ranges and checks each throw against them. One finding per method to avoid noise.
+  Languages: JS/TS, Python (Java skipped — checked exceptions are intentionally propagated).
+
+- **`double-close` pass (CWE-675, reliability, medium)** — Detects I/O resources that are
+  `close()`d more than once within the same method. Reuses resource-open/close patterns from
+  `resource-leak`. Skips cases where all closes are inside a `finally` block (benign pattern).
+  Languages: Java, JS/TS, Python, Rust.
+
+- **`use-after-close` pass (CWE-672, reliability, high)** — Detects method calls on a resource
+  variable after it has been `close()`d in the same method. Finds the first close call, then scans
+  for any subsequent non-close method calls on the same receiver. Languages: Java, JS/TS, Python, Rust.
+
+[3.9.9]: https://github.com/cogniumhq/circle-ir/compare/v3.9.8...v3.9.9
+
 ## [3.9.8] - 2026-03-26
 
 ### Added

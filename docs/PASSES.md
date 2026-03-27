@@ -69,16 +69,16 @@ All 19 passes operate on the `taint` graph. SARIF level: `error`.
 | 22 | `dead-code` | CWE-561 | warning | cfg | shipped | CFG block unreachable from any entry point |
 | 23 | `infinite-loop` | CWE-835 | warning | cfg | shipped | CFG loop with no reachable exit edge (back-edge analysis + keyword fallback) |
 | 24 | `missing-await` | CWE-252 | warning | ast, cg | shipped | Async function called without `await`; Promise result discarded |
-| 25 | `double-close` | CWE-675 | warning | cfg, dfg | phase-4 | Resource `close()` reachable on 2+ paths that both execute |
-| 26 | `use-after-close` | CWE-672 | error | dfg, cfg | phase-4 | Read of variable after the resource it references was released |
+| 25 | `double-close` | CWE-675 | warning | cfg, dfg | shipped | Resource closed twice within the same method — may throw |
+| 26 | `use-after-close` | CWE-672 | error | dfg, cfg | shipped | Method call on a resource after it has been closed |
 | 28 | `unchecked-return` | CWE-252 | warning | cg, dfg | shipped | Return value ignored where most callers check it (statistical) |
 | 48 | `sync-io-async` | CWE-1050 | warning | ast, cg | shipped | Blocking I/O call (`readFileSync`, `requests.get`) inside async function |
 | 50 | `string-concat-loop` | CWE-1046 | warning | dfg, cfg | shipped | `string +=` inside loop body (O(n²) allocations) |
 | 53 | `missing-guard-dom` | — | error | dom, taint | phase-4 | Auth check exists but does not dominate the sensitive operation |
 | 54 | `cleanup-verify` | CWE-772 | warning | dom, dfg | phase-4 | Resource cleanup does not post-dominate its acquisition |
-| 74 | `unhandled-exception` | CWE-390 | warning | throws, cg | phase-4 | Exception thrown, propagates through call chain with no catch |
-| 75 | `broad-catch` | CWE-396 | note | throws, inherit | phase-4 | `catch(Exception)` when only specific subtypes are thrown |
-| 76 | `swallowed-exception` | CWE-390 | warning | throws, cfg | phase-4 | Catch block: no re-throw, no log, no error return |
+| 74 | `unhandled-exception` | CWE-390 | warning | cfg | shipped | throw/raise not covered by any try/catch in the same function (JS/TS, Python) |
+| 75 | `broad-catch` | CWE-396 | warning | cfg | shipped | catch(Exception) / bare except — catches more than intended (Java, Python) |
+| 76 | `swallowed-exception` | CWE-390 | warning | cfg | shipped | Catch block with no throw, log, or return — exception silently discarded |
 | 79 | `variable-shadowing` | CWE-1109 | warning | scope | shipped | Inner scope declares same-name variable as outer scope |
 | 81 | `leaked-global` | CWE-1109 | warning | scope | shipped | Assignment without declaration (accidental global in JS/Python) |
 | 82 | `unused-variable` | CWE-561 | note | scope, dfg | shipped | Variable declared but has no reads on any reachable path |

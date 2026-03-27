@@ -112,19 +112,19 @@ Numbers follow COGNIUM_IMPLEMENTATION_GUIDE §10 Week 12-14.
 ### New graphs
 
 - [x] **Dominator tree** (`src/graph/dominator-graph.ts`) — Cooper et al. algorithm; `dominates(a, b)`, `strictlyDominates(a, b)`, `immediateDominator(n)`, `dominated(n)` (done in v3.9.8)
-- [ ] **Exception flow graph** (`src/graph/exception-graph.ts`) — throw → catch edges; uncaught propagation via call graph
+- [x] **Exception flow graph** (`src/graph/exception-flow-graph.ts`) — try/catch CFG edge indexing; `ExceptionFlowGraph` class (done in v3.9.9)
 - [ ] **TypeHierarchy wired to taint matching** — pass `TypeHierarchyResolver` to `TaintMatcherPass`; `PreparedStatement.execute()` matched as subtype of `Statement.execute()` without duplicate configs (see `src/resolution/type-hierarchy.ts:couldBeType()`)
 
 ### Reliability passes (dominator + exception)
 
 - [x] **#23 `infinite-loop`** (CWE-835) — CFG cycle with no exit edge (done in v3.9.8)
-- [ ] **#25 `double-close`** (CWE-675) — resource `close()` reachable on 2+ paths that both execute
-- [ ] **#26 `use-after-close`** (CWE-672) — read of variable after the resource was released
+- [x] **#25 `double-close`** (CWE-675) — resource `close()` reachable on 2+ paths that both execute (done in v3.9.9)
+- [x] **#26 `use-after-close`** (CWE-672) — read of variable after the resource was released (done in v3.9.9)
 - [ ] **#53 `missing-guard-dom`** (—) — auth check doesn't dominate sensitive operation
 - [ ] **#54 `cleanup-verify`** (CWE-772) — resource cleanup doesn't post-dominate acquisition
-- [ ] **#74 `unhandled-exception`** (CWE-390) — exception propagates through call chain with no catch
-- [ ] **#75 `broad-catch`** (CWE-396) — `catch(Exception)` when only subtypes are thrown
-- [ ] **#76 `swallowed-exception`** (CWE-390) — catch block: no re-throw, no log, no error return
+- [x] **#74 `unhandled-exception`** (CWE-390) — throw/raise not covered by any try/catch (JS/TS, Python) (done in v3.9.9)
+- [x] **#75 `broad-catch`** (CWE-396) — `catch(Exception)` / bare except (Java, Python) (done in v3.9.9)
+- [x] **#76 `swallowed-exception`** (CWE-390) — catch block: no re-throw, no log, no error return (done in v3.9.9)
 
 ### Performance passes (existing graphs)
 
@@ -217,4 +217,4 @@ Before any release:
 
 ---
 
-*Last updated: 2026-03-25*
+*Last updated: 2026-03-26*

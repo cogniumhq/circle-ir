@@ -143,6 +143,7 @@ export {
 
 // Graph utilities
 export { DominatorGraph } from './graph/dominator-graph.js';
+export { ExceptionFlowGraph, type TryCatchInfo } from './graph/exception-flow-graph.js';
 
 // Resolution utilities
 export {
