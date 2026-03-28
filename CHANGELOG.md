@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.12.1] - 2026-03-28
+
+### Changed
+
+- **Dependency upgrades** — all packages bumped to latest:
+  - `yaml` 2.8.2 → 2.8.3 (runtime)
+  - `vitest` + `@vitest/coverage-v8` 4.1.0 → 4.1.2 (dev)
+  - `typescript` 5.9.3 → 6.0.2 (dev)
+- **`tsconfig.json`** — `moduleResolution: "node"` → `"bundler"` (required for TypeScript 6;
+  `"node"` (alias `"node10"`) is deprecated and will be removed in TypeScript 7.0)
+- **CLAUDE.md** — updated test count: 788+ → 1423+
+
+[3.12.1]: https://github.com/cogniumhq/circle-ir/compare/v3.12.0...v3.12.1
+
 ## [3.12.0] - 2026-03-28
 
 ### Added
