@@ -359,7 +359,7 @@ npm run build:all       # All targets
 
 ## Analysis Pipeline
 
-`analyze()` runs a single `AnalysisPipeline` of 11 sequential `AnalysisPass` implementations. Each pass declares a `category: PassCategory` and can emit `SastFinding` objects via `context.addFinding()`.
+`analyze()` runs a single `AnalysisPipeline` of **36 sequential `AnalysisPass` implementations**. Each pass declares a `category: PassCategory` and can emit `SastFinding` objects via `context.addFinding()`.
 
 ```
 Source Code
@@ -374,34 +374,71 @@ IR Extraction → Types, Calls, CFG, DFG, Imports/Exports
 CodeGraph (lazy indexes: callsByMethod, defsByVar, usesAtLine, loopBodies, …)
     │
     ▼
-AnalysisPipeline (11 passes, sequential)
+AnalysisPipeline (36 passes, sequential)
     │
-    ├─ 1. TaintMatcherPass       (security)  — match source/sink configs against IR
-    ├─ 2. ConstantPropagationPass(security)  — track variable values, detect dead code
-    ├─ 3. LanguageSourcesPass    (security)  — enrich sources using language plugin
-    ├─ 4. SinkFilterPass         (security)  — filter sinks using constant propagation
-    ├─ 5. TaintPropagationPass   (security)  — enumerate source→sink paths via DFG
-    ├─ 6. InterproceduralPass    (security)  — cross-method taint tracking
-    ├─ 7. DeadCodePass           (reliability)   — CFG BFS; unreachable blocks → finding
-    ├─ 8. MissingAwaitPass       (reliability)   — unawaited async calls in JS/TS
-    ├─ 9. NPlusOnePass           (performance)   — DB/HTTP calls inside loopBodies()
-    ├─10. MissingPublicDocPass   (maintainability)— public API without doc comment
-    └─11. TodoInProdPass         (maintainability)— TODO/FIXME/HACK/XXX in non-test files
+    ├─── Security (passes 1–6) ─────────────────────────────────────────────
+    │    ├─ 1. TaintMatcherPass          — match source/sink configs + TypeHierarchy
+    │    ├─ 2. ConstantPropagationPass   — track variable values, detect dead code
+    │    ├─ 3. LanguageSourcesPass       — enrich sources using language plugin
+    │    ├─ 4. SinkFilterPass            — filter sinks using constant propagation
+    │    ├─ 5. TaintPropagationPass      — enumerate source→sink paths via DFG
+    │    └─ 6. InterproceduralPass       — cross-method taint tracking
+    │
+    ├─── Reliability (passes 7–22) ─────────────────────────────────────────
+    │    ├─ 7. DeadCodePass              — CFG BFS; unreachable blocks
+    │    ├─ 8. MissingAwaitPass          — unawaited async calls (JS/TS)
+    │    ├─ 9. NullDerefPass             — null source dereferenced without guard
+    │    ├─10. ResourceLeakPass          — resource opened, not closed on all paths
+    │    ├─11. UncheckedReturnPass       — return value of critical op discarded
+    │    ├─12. InfiniteLoopPass          — CFG cycle with no exit edge
+    │    ├─13. DoubleClosePass           — resource closed twice (CWE-675)
+    │    ├─14. UseAfterClosePass         — method called after close() (CWE-672)
+    │    ├─15. UnhandledExceptionPass    — throw/raise without try/catch
+    │    ├─16. BroadCatchPass            — catch(Exception) / bare except
+    │    ├─17. SwallowedExceptionPass    — catch block silently discards exception
+    │    ├─18. VariableShadowingPass     — inner scope shadows outer binding
+    │    ├─19. LeakedGlobalPass          — accidental global assignment (JS/Python)
+    │    ├─20. UnusedVariablePass        — declared variable with no reads
+    │    ├─21. MissingGuardDomPass       — sensitive op not dominated by auth check (CWE-285)
+    │    └─22. CleanupVerifyPass         — cleanup doesn't post-dominate acquisition (CWE-772)
+    │
+    ├─── Performance (passes 23–27) ────────────────────────────────────────
+    │    ├─23. NPlusOnePass              — DB/HTTP calls inside loopBodies()
+    │    ├─24. SyncIoAsyncPass           — blocking I/O inside async function
+    │    ├─25. StringConcatLoopPass      — string += inside loop (O(n²) allocs)
+    │    ├─26. RedundantLoopComputationPass — loop-invariant .length/.size() hoisting
+    │    ├─27. UnboundedCollectionPass   — collection grows in loop with no size cap
+    │    ├─28. SerialAwaitPass           — sequential awaits with no dependency (JS/TS)
+    │    └─29. ReactInlineJsxPass        — inline object/function in JSX props (JS/TS)
+    │
+    ├─── Maintainability (passes 30–32) ────────────────────────────────────
+    │    ├─30. MissingPublicDocPass      — public API without doc comment
+    │    ├─31. TodoInProdPass            — TODO/FIXME/HACK in non-test files
+    │    └─32. StaleDocRefPass           — doc comment references missing symbol
+    │
+    └─── Architecture (passes 33–36) ───────────────────────────────────────
+         ├─33. CircularDependencyPass    — cycle in import graph (Tarjan SCC)
+         ├─34. OrphanModulePass          — file with no incoming imports
+         ├─35. DependencyFanOutPass      — module imports 20+ others
+         ├─36. DeepInheritancePass       — inheritance chain > 5 levels
+         ├─  . MissingOverridePass       — overrides parent without @Override (Java)
+         └─  . UnusedInterfaceMethodPass — interface method never called in-file
     │
     ▼
 PipelineRunResult
     ├─ results: Map<passName, passResult>  — per-pass structured output
-    └─ findings: SastFinding[]             — all findings from passes 7–11
+    └─ findings: SastFinding[]             — all findings from passes 7–36
     │
     ▼
 CircleIR output
     ├─ taint.flows   — security taint flows (from passes 1–6)
-    └─ findings      — quality findings (from passes 7–11)
+    ├─ findings      — quality findings (from passes 7–36)
+    └─ metrics       — FileMetrics with 24 software quality metrics (MetricRunner)
 ```
 
-**For multi-file analysis**, `analyzeProject()` runs the full 11-pass pipeline on each file independently, then uses `ProjectGraph` → `CrossFilePass` to surface taint flows that span file boundaries, returning a `ProjectAnalysis` with `taint_paths`, `cross_file_calls`, and `type_hierarchy`.
+**For multi-file analysis**, `analyzeProject()` runs the full 36-pass pipeline on each file independently, then uses `ProjectGraph` → `CrossFilePass` to surface taint flows that span file boundaries, returning a `ProjectAnalysis` with `taint_paths`, `cross_file_calls`, and `type_hierarchy`.
 
-See [docs/PASSES.md](PASSES.md) for the canonical pass registry with rule IDs, CWEs, and roadmap.
+See [docs/PASSES.md](PASSES.md) for the canonical pass registry with rule IDs, CWEs, and status.
 
 ---
 
@@ -456,11 +493,11 @@ FPs primarily from: correlated predicates, custom sanitizers, strong updates.
 
 ## Future Directions
 
-1. **Phase 1 Group 2 passes:** null-deref, resource-leak, unchecked-return, sync-io-async, string-concat-loop
-2. **Metrics engine:** MetricRunner producing `FileMetrics` (cyclomatic complexity, CBO, Halstead, LOC)
-3. **Type Inference:** Better receiver type resolution for Java generics and polymorphism
-4. **Framework-Specific Plugins:** Spring Security, Struts, etc.
-5. **IDE Integration:** VS Code, IntelliJ extensions via LSP
+1. **Broader framework coverage:** Python Jinja2/Django template sinks, Next.js server actions, TypeORM query builder patterns — adding these config entries would eliminate the remaining SecuriBench false negatives.
+2. **Type resolution improvements:** Java generic-type receiver inference (`List<T>` element access, `Optional<T>.get()`) to reduce false negatives in heavily generic codebases; tracked in `src/languages/java.ts`.
+3. **Cognitive complexity metric:** McCabe cyclomatic complexity is already present; adding Sonar's cognitive complexity scoring would improve the `bug_hotspot_score` composite.
+4. **IDE integration:** VS Code / IntelliJ Language Server Protocol (LSP) extension exposing circle-ir findings inline as you type.
+5. **Go / Ruby language plugins:** Tree-sitter grammars exist; adding Go and Ruby plugins would cover the remaining popular web-framework ecosystems.
 
 See [TODO.md](../TODO.md) for the phase-based roadmap.
 

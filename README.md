@@ -1,13 +1,14 @@
 # circle-ir
 
-A high-performance Static Application Security Testing (SAST) library for detecting security vulnerabilities through taint analysis, and code quality findings through an extensible analysis-pass pipeline. Works in Node.js and browsers.
+A high-performance Static Application Security Testing (SAST) library for detecting security vulnerabilities through taint analysis, and code quality findings through an extensible 36-pass analysis pipeline. Works in Node.js and browsers.
 
 ## Features
 
 - **Taint Analysis**: Track data flow from sources (user input) to sinks (dangerous operations)
 - **Multi-language Support**: Java, JavaScript/TypeScript, Python, Rust, Bash/Shell
 - **High Accuracy**: 100% on OWASP Benchmark, 100% on Juliet Test Suite, 97.7% TPR on SecuriBench Micro
-- **11-Pass Pipeline**: Security taint passes + quality passes (dead code, missing await, N+1, doc coverage, TODO markers)
+- **36-Pass Pipeline**: 19 security taint passes + 17 reliability/performance/maintainability/architecture quality passes
+- **Metrics Engine**: 24 software quality metrics (cyclomatic complexity, Halstead, CBO, RFC, LCOM, DIT, and 4 composite scores)
 - **Cross-File Analysis**: `analyzeProject()` surfaces taint flows that span multiple files
 - **Universal**: Works in Node.js and browsers with environment-agnostic core
 - **Zero External Dependencies**: Core analysis runs without network calls or external services
@@ -40,11 +41,19 @@ for (const flow of result.taint.flows || []) {
   console.log(`  Sink: line ${flow.sink_line}`);
 }
 
-// Quality findings from analysis passes (dead-code, missing-await, n-plus-one, etc.)
+// Quality findings from all 36 analysis passes
 for (const finding of result.findings || []) {
   console.log(`[${finding.severity}] ${finding.rule_id} at line ${finding.line}`);
   console.log(`  ${finding.message}`);
   if (finding.fix) console.log(`  Fix: ${finding.fix}`);
+}
+
+// Software quality metrics
+const m = result.metrics;
+if (m) {
+  console.log(`Cyclomatic complexity: ${m.cyclomatic_complexity}`);
+  console.log(`Maintainability index: ${m.maintainability_index}`);
+  console.log(`CBO (coupling):        ${m.CBO}`);
 }
 ```
 
@@ -101,7 +110,8 @@ result.dfg        // Data flow graph
 result.taint      // Taint sources, sinks, flows
 result.imports    // Import statements
 result.exports    // Exported symbols
-result.findings   // SastFinding[] from all 11 analysis passes
+result.findings   // SastFinding[] from all 36 analysis passes
+result.metrics    // FileMetrics — 24 software quality metrics (always populated)
 ```
 
 ### `analyzeProject(files, options?)`
@@ -181,20 +191,29 @@ const pyResult = await analyze(pyCode, 'app.py', 'python');
 const rsResult = await analyze(rsCode, 'main.rs', 'rust');
 ```
 
-## Detected Vulnerabilities
+## Detected Security Vulnerabilities
 
-| Type | CWE | Description |
-|------|-----|-------------|
-| SQL Injection | CWE-89 | User input in SQL queries |
-| Command Injection | CWE-78 | User input in system commands |
-| XSS | CWE-79 | User input in HTML output |
-| Path Traversal | CWE-22 | User input in file paths |
-| LDAP Injection | CWE-90 | User input in LDAP queries |
-| XPath Injection | CWE-643 | User input in XPath queries |
-| Deserialization | CWE-502 | Untrusted deserialization |
-| SSRF | CWE-918 | Server-side request forgery |
-| Code Injection | CWE-94 | Dynamic code execution |
-| XXE | CWE-611 | XML external entity injection |
+| Type | CWE | Severity | Description |
+|------|-----|----------|-------------|
+| SQL Injection | CWE-89 | Critical | User input in SQL queries |
+| Command Injection | CWE-78 | Critical | User input in system commands |
+| Deserialization | CWE-502 | Critical | Untrusted deserialization |
+| XXE | CWE-611 | Critical | XML external entity injection |
+| Code Injection | CWE-94 | Critical | Dynamic code execution |
+| XSS | CWE-79 | High | User input in HTML output |
+| Path Traversal | CWE-22 | High | User input in file paths |
+| SSRF | CWE-918 | High | Server-side request forgery |
+| LDAP Injection | CWE-90 | High | User input in LDAP queries |
+| XPath Injection | CWE-643 | High | User input in XPath queries |
+| NoSQL Injection | CWE-943 | High | User input in NoSQL queries |
+| Open Redirect | CWE-601 | Medium | User controls redirect destination |
+| Log Injection | CWE-117 | Medium | User input in logs |
+| Trust Boundary | CWE-501 | Medium | Data crosses trust boundary |
+| External Taint | CWE-668 | Medium | External input reaches sensitive sink |
+| Weak Random | CWE-330 | Low | Weak random number generator |
+| Weak Hash | CWE-327 | Low | Weak hashing algorithm |
+| Weak Crypto | CWE-327 | Low | Weak cryptographic algorithm |
+| Insecure Cookie | CWE-614 | Low | Cookie without Secure/HttpOnly flags |
 
 ## Configuration
 
@@ -212,7 +231,7 @@ sources:
 
 ## SAST Findings & Quality Passes
 
-The 11-pass pipeline emits `SastFinding[]` via `result.findings`. Each finding is SARIF 2.1.0-aligned:
+The 36-pass pipeline emits `SastFinding[]` via `result.findings`. Each finding is SARIF 2.1.0-aligned:
 
 ```typescript
 interface SastFinding {
@@ -230,21 +249,57 @@ interface SastFinding {
 }
 ```
 
-**Current passes** (see [docs/PASSES.md](docs/PASSES.md) for the full registry):
+**Pass categories** (see [docs/PASSES.md](docs/PASSES.md) for the full registry with all 36 rule IDs and CWEs):
 
-| Pass | rule_id | Category | CWE | Level |
-|------|---------|----------|-----|-------|
-| TaintMatcherPass | _(produces flows)_ | security | — | error |
-| ConstantPropagationPass | _(reduces FP)_ | security | — | — |
-| LanguageSourcesPass | _(enriches sources)_ | security | — | — |
-| SinkFilterPass | _(filters sinks)_ | security | — | — |
-| TaintPropagationPass | _(propagates taint)_ | security | — | error |
-| InterproceduralPass | _(cross-method)_ | security | — | error |
-| DeadCodePass | `dead-code` | reliability | CWE-561 | warning |
-| MissingAwaitPass | `missing-await` | reliability | CWE-252 | warning |
-| NPlusOnePass | `n-plus-one` | performance | CWE-1049 | warning |
-| MissingPublicDocPass | `missing-public-doc` | maintainability | — | note |
-| TodoInProdPass | `todo-in-prod` | maintainability | — | note |
+| Category | Passes | Example rule_ids |
+|----------|--------|-----------------|
+| `security` (19) | Taint matching, propagation, inter-procedural | _(produces `taint.flows`)_ |
+| `reliability` (16) | Resource management, control flow, exception handling | `null-deref`, `resource-leak`, `infinite-loop`, `double-close`, `use-after-close`, `missing-guard-dom`, `cleanup-verify`, `unhandled-exception`, `broad-catch`, `swallowed-exception` |
+| `performance` (5) | Loop efficiency, async patterns | `n-plus-one`, `redundant-loop-computation`, `unbounded-collection`, `serial-await`, `react-inline-jsx` |
+| `maintainability` (3) | Documentation, markers | `missing-public-doc`, `todo-in-prod`, `stale-doc-ref` |
+| `architecture` (6) | Coupling, inheritance, interface contracts | `circular-dependency`, `orphan-module`, `dependency-fan-out`, `deep-inheritance`, `missing-override`, `unused-interface-method` |
+
+## Metrics Engine
+
+`result.metrics` is always populated with 24 software quality metrics:
+
+```typescript
+interface FileMetrics {
+  // Complexity
+  cyclomatic_complexity: number;  // v(G) per method average
+  WMC: number;                    // Weighted methods per class
+  halstead_volume: number;        // Halstead volume
+  halstead_difficulty: number;
+  halstead_effort: number;
+  halstead_bugs: number;
+
+  // Size
+  LOC: number;                    // Lines of code
+  NLOC: number;                   // Non-blank lines
+  comment_density: number;        // Comment lines / total lines
+  function_count: number;
+
+  // Coupling
+  CBO: number;                    // Coupling between objects
+  RFC: number;                    // Response for a class
+
+  // Inheritance
+  DIT: number;                    // Depth of inheritance tree
+  NOC: number;                    // Number of children
+
+  // Cohesion
+  LCOM: number;                   // Lack of cohesion in methods
+
+  // Documentation
+  doc_coverage: number;           // Fraction of public APIs documented
+
+  // Composite scores (0–100)
+  maintainability_index: number;
+  code_quality_index: number;
+  bug_hotspot_score: number;
+  refactoring_roi: number;
+}
+```
 
 ## Key Analysis Features
 
@@ -253,6 +308,9 @@ interface SastFinding {
 - **Inter-Procedural Analysis**: Tracks taint across method boundaries
 - **Sanitizer Recognition**: Detects PreparedStatement, ESAPI, escapeHtml, and other sanitizers
 - **Collection Tracking**: Precise taint tracking through List/Map operations with index shifting
+- **Dominator Tree Analysis**: Powers `missing-guard-dom` (CWE-285) and `cleanup-verify` (CWE-772) via post-dominator computation
+- **TypeHierarchy Resolution**: `PreparedStatement.executeQuery()` matches `Statement`-level sink configs — no duplicate config entries needed
+- **Exception Flow Graph**: Tracks try/catch structure for `unhandled-exception`, `broad-catch`, `swallowed-exception`
 
 ## Benchmark Results
 

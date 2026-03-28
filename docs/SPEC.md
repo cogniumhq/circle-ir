@@ -1,7 +1,7 @@
 # Circle-IR 3.0 Specification
 
 **Status**: Living Document
-**Last Updated**: 2026-03-25
+**Last Updated**: 2026-03-28
 **Implementation**: Python (reference) → TypeScript (target)
 
 ---
@@ -28,7 +28,13 @@
 | DFG Chains | ⬜ | ⬜ | Pending |
 | Project-Level (`analyzeProject`) | ⬜ | ✅ | Done |
 | SAST Findings (`SastFinding[]`) | ⬜ | ✅ | Done (v3.9.1) |
-| Phase 1 passes (dead-code, missing-await, n-plus-one, missing-public-doc, todo-in-prod) | ⬜ | ✅ | Done (v3.9.1) |
+| Software Metrics (`FileMetrics`, 24 metrics) | ⬜ | ✅ | Done (v3.9.5) |
+| Reliability passes (null-deref, resource-leak, unchecked-return, dead-code, variable-shadowing, leaked-global, unused-variable, missing-await, sync-io-async, string-concat-loop, infinite-loop, double-close, use-after-close, unhandled-exception, broad-catch, swallowed-exception) | ⬜ | ✅ | Done (v3.9.0–3.9.9) |
+| Performance passes (n-plus-one, redundant-loop-computation, unbounded-collection, serial-await, react-inline-jsx) | ⬜ | ✅ | Done (v3.9.0–3.9.8) |
+| Maintainability passes (missing-public-doc, todo-in-prod, stale-doc-ref) | ⬜ | ✅ | Done (v3.9.0–3.9.8) |
+| Architecture passes (circular-dependency, orphan-module, dependency-fan-out, deep-inheritance, missing-override, unused-interface-method) | ⬜ | ✅ | Done (v3.9.0–3.11.0) |
+| TypeHierarchy resolver (polymorphic sink matching) | ⬜ | ✅ | Done (v3.11.0) |
+| Dominator-tree passes (missing-guard-dom, cleanup-verify) | ⬜ | ✅ | Done (v3.11.0) |
 
 ---
 
@@ -47,12 +53,15 @@ Circle-IR produces JSON with this top-level structure:
   "imports": [ ],
   "exports": [ ],
   "findings": [ ],
+  "metrics": { },
   "unresolved": [ ],
   "enriched": { }
 }
 ```
 
-`findings` is a `SastFinding[]` populated by the 11-pass `AnalysisPipeline`. Each finding is SARIF 2.1.0-aligned with `rule_id`, `category` (`PassCategory`), `severity`, `level` (`SarifLevel`), `file`, `line`, `cwe?`, `fix?`, and `evidence?`. See [docs/PASSES.md](PASSES.md) for the full pass registry.
+`findings` is a `SastFinding[]` populated by the 36-pass `AnalysisPipeline` (19 security taint passes + 17 quality passes). Each finding is SARIF 2.1.0-aligned with `rule_id`, `category` (`PassCategory`), `severity`, `level` (`SarifLevel`), `file`, `line`, `cwe?`, `fix?`, and `evidence?`. See [docs/PASSES.md](PASSES.md) for the full pass registry.
+
+`metrics` is a `FileMetrics` object always populated with 24 software quality metrics (cyclomatic complexity, Halstead suite, CK metrics, composite scores). See the Metrics section below.
 
 ---
 
@@ -64,7 +73,7 @@ File metadata and version information.
 interface Meta {
   circle_ir: "3.0";
   file: string;
-  language: "java" | "c" | "cpp";
+  language: "java" | "javascript" | "typescript" | "python" | "rust" | "bash";
   loc: number;
   hash: string;           // SHA256 prefix (16 chars)
   package?: string;       // PENDING: Add to implementation
