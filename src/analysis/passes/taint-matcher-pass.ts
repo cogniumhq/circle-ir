@@ -11,6 +11,7 @@ import type { TaintConfig } from '../../types/config.js';
 import type { AnalysisPass, PassContext } from '../../graph/analysis-pass.js';
 import { analyzeTaint } from '../taint-matcher.js';
 import { getLanguagePlugin } from '../../languages/index.js';
+import { createWithJdkTypes } from '../../resolution/type-hierarchy.js';
 
 export interface TaintMatcherResult {
   sources: TaintSource[];
@@ -67,7 +68,12 @@ export class TaintMatcherPass implements AnalysisPass<TaintMatcherResult> {
       }
     }
 
-    const taint = analyzeTaint(calls, types, mergedConfig);
+    // Build a local TypeHierarchyResolver so that sink patterns match subtype
+    // receivers (e.g. PreparedStatement.executeQuery() matches Statement sink).
+    const hierarchy = createWithJdkTypes();
+    hierarchy.addFromIR(graph.ir, graph.ir.meta.file);
+
+    const taint = analyzeTaint(calls, types, mergedConfig, hierarchy);
 
     // Extract method names annotated with @sanitizer (Javadoc comments).
     const sanitizerMethods: string[] = [];

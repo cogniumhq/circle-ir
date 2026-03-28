@@ -528,6 +528,19 @@ describe('LanguageSourcesPass — Python assignment sources', () => {
     expect(tbSink).toBeDefined();
     expect(tbSink!.cwe).toBe('CWE-501');
   });
+
+  it('adds XSS sink when a tainted var is returned inside an HTML f-string', () => {
+    const code = [
+      'data = request.args.get("q")',
+      'return f"<html>{data}</html>"',
+    ].join('\n');
+    const ctx = makeCtx(makeIR([], 'python', 'app.py'), code, 'python');
+    const result = new LanguageSourcesPass().run(ctx);
+    const xssSink = result.additionalSinks.find(s => s.type === 'xss');
+    expect(xssSink).toBeDefined();
+    expect(xssSink!.cwe).toBe('CWE-79');
+    expect(xssSink!.line).toBe(2);
+  });
 });
 
 // ---------------------------------------------------------------------------

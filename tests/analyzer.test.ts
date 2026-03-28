@@ -451,3 +451,107 @@ public class Config {
     expect(constructorFieldSource).toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Regression tests: command injection via interprocedural taint propagation
+// These guard against regressions where taint through method call return values
+// was incorrectly filtered, causing command injection sinks to be missed.
+// ---------------------------------------------------------------------------
+describe('Command injection — interprocedural taint regression', () => {
+  beforeAll(async () => { await initAnalyzer(); });
+
+  it('should detect r.exec(bar) when bar comes from same-class method call', async () => {
+    const code = `
+public class Service {
+    public void doPost(HttpServletRequest request) throws Exception {
+        String param = request.getHeader("X-Input");
+        String bar = doSomething(param);
+        Runtime r = Runtime.getRuntime();
+        r.exec(bar);
+    }
+    private String doSomething(String input) {
+        return input;
+    }
+}`;
+    const result = await analyze(code, 'test.java', 'java');
+    const cmdi = result.taint.sinks.find(s => s.type === 'command_injection');
+    expect(cmdi).toBeDefined();
+  });
+
+  it('should detect r.exec(bar) when bar comes from external class method call', async () => {
+    const code = `
+public class Service {
+    public void doPost(HttpServletRequest request) throws Exception {
+        String param = request.getHeader("X-Input");
+        String bar = ExternalUtils.transform(param);
+        Runtime r = Runtime.getRuntime();
+        r.exec(bar);
+    }
+}`;
+    const result = await analyze(code, 'test.java', 'java');
+    const cmdi = result.taint.sinks.find(s => s.type === 'command_injection');
+    expect(cmdi).toBeDefined();
+  });
+
+  it('should detect r.exec(cmd, argsEnv) — OWASP BenchmarkTest00174 pattern', async () => {
+    // taint: getHeader → URLDecoder.decode → thing.doSomething → bar → argsEnv → exec
+    const code = `
+public class BenchmarkTest00174 extends HttpServlet {
+    ThingInterface thing = ThingFactory.createThing();
+    public void doPost(HttpServletRequest request, HttpServletResponse response) throws Exception {
+        String param = "";
+        if (request.getHeader("BenchmarkTest00174") != null) {
+            param = request.getHeader("BenchmarkTest00174");
+        }
+        param = java.net.URLDecoder.decode(param, "UTF-8");
+        String bar = thing.doSomething(param);
+        String cmd = "";
+        String osName = System.getProperty("os.name");
+        if (osName.indexOf("Windows") != -1) {
+            cmd = Utils.getOSCommandString("echo");
+        }
+        String[] argsEnv = {bar};
+        Runtime r = Runtime.getRuntime();
+        Process p = r.exec(cmd, argsEnv);
+    }
+}`;
+    const result = await analyze(code, 'test.java', 'java');
+    const cmdi = result.taint.sinks.find(s => s.type === 'command_injection');
+    expect(cmdi).toBeDefined();
+  });
+
+  it('should detect r.exec(args) — OWASP BenchmarkTest00303 pattern (Base64 chain)', async () => {
+    // taint: getHeaders/nextElement → URLDecoder.decode → Base64 encode/decode → bar → args → exec
+    const code = `
+public class BenchmarkTest00303 extends HttpServlet {
+    public void doPost(HttpServletRequest request, HttpServletResponse response) throws Exception {
+        String param = "";
+        java.util.Enumeration<String> headers = request.getHeaders("BenchmarkTest00303");
+        if (headers != null && headers.hasMoreElements()) {
+            param = headers.nextElement();
+        }
+        param = java.net.URLDecoder.decode(param, "UTF-8");
+        String bar = "";
+        if (param != null) {
+            bar = new String(
+                    org.apache.commons.codec.binary.Base64.decodeBase64(
+                            org.apache.commons.codec.binary.Base64.encodeBase64(
+                                    param.getBytes())));
+        }
+        String[] args = null;
+        String osName = System.getProperty("os.name");
+        if (osName.indexOf("Windows") != -1) {
+            args = new String[] {"cmd.exe", "/c", "echo", bar};
+        } else {
+            args = new String[] {"sh", "-c", "ping -c1 " + bar};
+        }
+        Runtime r = Runtime.getRuntime();
+        Process p = r.exec(args);
+    }
+}`;
+    const result = await analyze(code, 'test.java', 'java');
+    const cmdi = result.taint.sinks.find(s => s.type === 'command_injection');
+    expect(cmdi).toBeDefined();
+  });
+
+});

@@ -85,12 +85,11 @@ export class TaintPropagationPass implements AnalysisPass<TaintPropagationPassRe
       if (flows.some(x => x.source_line === f.source_line && x.sink_line === f.sink_line)) continue;
 
       const flowForCheck = {
-        source: { line: f.source_line, type: f.source_type },
-        sink:   { line: f.sink_line,   type: f.sink_type   },
+        source: { line: f.source_line },
+        sink:   { line: f.sink_line   },
         path:   f.path.map(p => ({ variable: p.variable, line: p.line })),
       };
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      if (isCorrelatedPredicateFP(constProp, flowForCheck as any)) continue;
+      if (isCorrelatedPredicateFP(constProp, flowForCheck)) continue;
 
       let isFP = false;
       for (const step of f.path) {

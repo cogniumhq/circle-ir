@@ -261,6 +261,62 @@ for (let i = 0; i < 10; i++) {
     new RedundantLoopPass().run(ctx);
     expect(ctx.findings).toHaveLength(0);
   });
+
+  it('detects Object.keys(obj) inside a loop on an unmodified variable', () => {
+    const ir = makeIR({
+      cfg: {
+        blocks: [
+          { id: 0, type: 'entry', start_line: 1, end_line: 1 },
+          { id: 1, type: 'loop', start_line: 2, end_line: 2 },
+          { id: 2, type: 'normal', start_line: 3, end_line: 5 },
+        ],
+        edges: [
+          { from: 0, to: 1, type: 'sequential' },
+          { from: 1, to: 2, type: 'true' },
+          { from: 2, to: 1, type: 'back' },
+        ],
+      },
+      dfg: { defs: [], uses: [], chains: [] },
+    });
+    const code = `
+const obj = { a: 1, b: 2 };
+for (let i = 0; i < 10; i++) {
+  const keys = Object.keys(obj);
+  process(keys);
+}`;
+    const ctx = makeCtx(ir, code, 'typescript');
+    const result = new RedundantLoopPass().run(ctx);
+    expect(result.invariants.some(v => v.expression.includes('Object.keys(obj)'))).toBe(true);
+    expect(ctx.findings.some(f => f.rule_id === 'redundant-loop-computation')).toBe(true);
+  });
+
+  it('detects Math.sqrt(n) inside a loop on an unmodified variable', () => {
+    const ir = makeIR({
+      cfg: {
+        blocks: [
+          { id: 0, type: 'entry', start_line: 1, end_line: 1 },
+          { id: 1, type: 'loop', start_line: 2, end_line: 2 },
+          { id: 2, type: 'normal', start_line: 3, end_line: 5 },
+        ],
+        edges: [
+          { from: 0, to: 1, type: 'sequential' },
+          { from: 1, to: 2, type: 'true' },
+          { from: 2, to: 1, type: 'back' },
+        ],
+      },
+      dfg: { defs: [], uses: [], chains: [] },
+    });
+    const code = `
+const n = 100;
+for (let i = 0; i < 10; i++) {
+  const root = Math.sqrt(n);
+  process(root);
+}`;
+    const ctx = makeCtx(ir, code, 'typescript');
+    const result = new RedundantLoopPass().run(ctx);
+    expect(result.invariants.some(v => v.expression.includes('Math.sqrt(n)'))).toBe(true);
+    expect(ctx.findings.some(f => f.rule_id === 'redundant-loop-computation')).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -7,6 +7,85 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.11.0] - 2026-03-27
+
+### Added
+
+- **`missing-guard-dom` pass (#53, CWE-285)** — detects sensitive operations (delete, drop, truncate,
+  executeUpdate, createUser/Admin, grantRole, elevatePrivilege) that are not dominated by an
+  authentication check (authenticate, isAuthenticated, isAuthorized, hasPermission, verifyToken,
+  etc.) on all CFG paths. Java only. Level: `error`.
+
+- **`cleanup-verify` pass (#54, CWE-772)** — verifies that resource cleanup (`close()`,
+  `disconnect()`, `release()`, etc.) post-dominates acquisition on every path through the CFG.
+  Complements `resource-leak` (which checks for missing close entirely); this pass flags cases
+  where `close()` exists but is reachable only on some paths. Uses a reversed-CFG post-dominator
+  tree. Skips Rust (RAII) and Bash. Level: `warning`.
+
+- **`missing-override` pass (#64)** — flags methods in subclasses that match a parent class method
+  signature but lack the `@Override` annotation. Walks the full inheritance chain (up to 10 levels,
+  cycle-safe). Skips constructors, private, static, and abstract methods. Java only. Level: `warning`.
+
+- **`unused-interface-method` pass (#66)** — reports interface methods that are never called
+  anywhere in the same file. Conservative single-file scope; intended to surface API surface bloat
+  and dead interface contracts. Java and TypeScript. Level: `note`.
+
+- **TypeHierarchyResolver wired into TaintMatcherPass** — `analyzeTaint()` now accepts an optional
+  `TypeHierarchyResolver`, built via `createWithJdkTypes()` (pre-populates JDBC, IO, Servlet
+  hierarchy) and extended with file types from the IR. Enables `PreparedStatement.executeQuery()`
+  to match `Statement`-level sink configs, reducing false negatives in polymorphic call chains.
+
+- **DFG-verifier branch coverage tests** — 4 new tests cover previously untested branches:
+  - `reachesSink()` call-argument path (no DFG use entry → verified via call arg match)
+  - `calculateConfidence()` field-step penalty (`kind: 'field'` lowers confidence below 0.9)
+  - `calculateConfidence()` long-path penalty (chain >5 hops lowers confidence below 0.85)
+  - `laterDefsOfVar()` BFS exploration (re-definition reached when original def can't match sink)
+
+- **23 new pass tests** across 4 new test files (`missing-guard-dom.test.ts`,
+  `cleanup-verify.test.ts`, `missing-override.test.ts`, `unused-interface-method.test.ts`), each
+  using the standard minimal-IR fixture pattern.
+
+### Release notes
+
+Version 3.11.0 completes Phase 4 reliability and architecture passes. The pipeline now runs
+**36 sequential passes** (up from 32 in v3.10.0). All existing OWASP/Juliet/NodeGoat benchmark
+scores are maintained.
+
+[3.11.0]: https://github.com/cogniumhq/circle-ir/compare/v3.10.0...v3.11.0
+
+## [3.10.0] - 2026-03-27
+
+### Added
+
+- **Command injection interprocedural regression tests** — 4 new regression tests guard against
+  future regressions in OWASP cmdi taint propagation through interprocedural call chains:
+  - `r.exec(bar)` where `bar` is assigned from a same-class method call (e.g. `doSomething(param)`)
+  - `r.exec(bar)` where `bar` is assigned from an external class static method call
+  - OWASP BenchmarkTest00174 pattern: `getHeader → URLDecoder.decode → thing.doSomething → argsEnv[]
+    → r.exec(cmd, argsEnv)`
+  - OWASP BenchmarkTest00303 pattern: `getHeaders → nextElement → URLDecoder.decode → Base64
+    encode/decode chain → args[] → r.exec(args)`
+
+### Confirmed
+
+- **Interprocedural cmdi taint propagation works via `isTaintedExpression` child walk** —
+  Verified through targeted testing that the `isTaintedExpression` function in
+  `constant-propagation/propagator.ts` correctly handles all interprocedural taint patterns via
+  its recursive child-walk fallback (lines 2043–2047). This mechanism propagates taint through
+  arbitrary method call chains (same-class, cross-class, interface delegation, and library
+  wrappers like `Base64.encodeBase64/decodeBase64`) without needing explicit method return-value
+  analysis.
+
+### Release notes
+
+Version 3.10.0 is the first release in the 3.10.x series, consolidating:
+- All 5 reliability passes added in v3.9.9 (`swallowed-exception`, `broad-catch`,
+  `unhandled-exception`, `double-close`, `use-after-close`)
+- The `Runtime.exec()` 37-FN fix from v3.9.10
+- Confirmed 100% OWASP Java benchmark score (1341 tests passing)
+
+[3.10.0]: https://github.com/cogniumhq/circle-ir/compare/v3.9.10...v3.10.0
+
 ## [3.9.10] - 2026-03-27
 
 ### Fixed

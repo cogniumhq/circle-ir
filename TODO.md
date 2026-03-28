@@ -113,15 +113,15 @@ Numbers follow COGNIUM_IMPLEMENTATION_GUIDE §10 Week 12-14.
 
 - [x] **Dominator tree** (`src/graph/dominator-graph.ts`) — Cooper et al. algorithm; `dominates(a, b)`, `strictlyDominates(a, b)`, `immediateDominator(n)`, `dominated(n)` (done in v3.9.8)
 - [x] **Exception flow graph** (`src/graph/exception-flow-graph.ts`) — try/catch CFG edge indexing; `ExceptionFlowGraph` class (done in v3.9.9)
-- [ ] **TypeHierarchy wired to taint matching** — pass `TypeHierarchyResolver` to `TaintMatcherPass`; `PreparedStatement.execute()` matched as subtype of `Statement.execute()` without duplicate configs (see `src/resolution/type-hierarchy.ts:couldBeType()`)
+- [x] **TypeHierarchy wired to taint matching** — pass `TypeHierarchyResolver` to `TaintMatcherPass`; `PreparedStatement.execute()` matched as subtype of `Statement.execute()` without duplicate configs (see `src/resolution/type-hierarchy.ts:couldBeType()`) (done in v3.11.0)
 
 ### Reliability passes (dominator + exception)
 
 - [x] **#23 `infinite-loop`** (CWE-835) — CFG cycle with no exit edge (done in v3.9.8)
 - [x] **#25 `double-close`** (CWE-675) — resource `close()` reachable on 2+ paths that both execute (done in v3.9.9)
 - [x] **#26 `use-after-close`** (CWE-672) — read of variable after the resource was released (done in v3.9.9)
-- [ ] **#53 `missing-guard-dom`** (—) — auth check doesn't dominate sensitive operation
-- [ ] **#54 `cleanup-verify`** (CWE-772) — resource cleanup doesn't post-dominate acquisition
+- [x] **#53 `missing-guard-dom`** (CWE-285) — auth check doesn't dominate sensitive operation (done in v3.11.0)
+- [x] **#54 `cleanup-verify`** (CWE-772) — resource cleanup doesn't post-dominate acquisition (done in v3.11.0)
 - [x] **#74 `unhandled-exception`** (CWE-390) — throw/raise not covered by any try/catch (JS/TS, Python) (done in v3.9.9)
 - [x] **#75 `broad-catch`** (CWE-396) — `catch(Exception)` / bare except (Java, Python) (done in v3.9.9)
 - [x] **#76 `swallowed-exception`** (CWE-390) — catch block: no re-throw, no log, no error return (done in v3.9.9)
@@ -136,8 +136,8 @@ Numbers follow COGNIUM_IMPLEMENTATION_GUIDE §10 Week 12-14.
 ### Architecture passes (type hierarchy)
 
 - [x] **#62 `deep-inheritance`** (CWE-1086) — inheritance depth > 5 levels (done in v3.9.8)
-- [ ] **#64 `missing-override`** (—) — method matches supertype signature, lacks `@Override`
-- [ ] **#66 `unused-interface-method`** (—) — interface method never called through that interface
+- [x] **#64 `missing-override`** (—) — method matches supertype signature, lacks `@Override` (done in v3.11.0)
+- [x] **#66 `unused-interface-method`** (—) — interface method never called through that interface (done in v3.11.0)
 
 ---
 
@@ -217,4 +217,4 @@ Before any release:
 
 ---
 
-*Last updated: 2026-03-26*
+*Last updated: 2026-03-27*

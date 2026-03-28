@@ -74,8 +74,8 @@ All 19 passes operate on the `taint` graph. SARIF level: `error`.
 | 28 | `unchecked-return` | CWE-252 | warning | cg, dfg | shipped | Return value ignored where most callers check it (statistical) |
 | 48 | `sync-io-async` | CWE-1050 | warning | ast, cg | shipped | Blocking I/O call (`readFileSync`, `requests.get`) inside async function |
 | 50 | `string-concat-loop` | CWE-1046 | warning | dfg, cfg | shipped | `string +=` inside loop body (O(n²) allocations) |
-| 53 | `missing-guard-dom` | — | error | dom, taint | phase-4 | Auth check exists but does not dominate the sensitive operation |
-| 54 | `cleanup-verify` | CWE-772 | warning | dom, dfg | phase-4 | Resource cleanup does not post-dominate its acquisition |
+| 53 | `missing-guard-dom` | CWE-285 | error | dom, cg | shipped | Auth check exists but does not dominate the sensitive operation (Java only) |
+| 54 | `cleanup-verify` | CWE-772 | warning | dom, dfg | shipped | Resource cleanup does not post-dominate its acquisition (Java, Python, JS/TS) |
 | 74 | `unhandled-exception` | CWE-390 | warning | cfg | shipped | throw/raise not covered by any try/catch in the same function (JS/TS, Python) |
 | 75 | `broad-catch` | CWE-396 | warning | cfg | shipped | catch(Exception) / bare except — catches more than intended (Java, Python) |
 | 76 | `swallowed-exception` | CWE-390 | warning | cfg | shipped | Catch block with no throw, log, or return — exception silently discarded |
@@ -122,8 +122,8 @@ All 19 passes operate on the `taint` graph. SARIF level: `error`.
 | # | rule_id | CWE | level | graphs | status | Description |
 |---|---------|-----|-------|--------|--------|-------------|
 | 62 | `deep-inheritance` | CWE-1086 | warning | types | shipped | Inheritance depth > 5 levels (walks ir.types extends chain) |
-| 64 | `missing-override` | — | warning | inherit, ast | phase-4 | Method matches supertype signature but lacks @Override annotation |
-| 66 | `unused-interface-method` | — | note | inherit, cg | phase-4 | Interface method declared but never called through that interface |
+| 64 | `missing-override` | — | warning | inherit, ast | shipped | Method matches supertype signature but lacks @Override annotation (Java only) |
+| 66 | `unused-interface-method` | — | note | inherit, cg | shipped | Interface method declared but never called through that interface (Java, TS) |
 | 68 | `circular-dependency` | CWE-1047 | warning | imports | shipped | Cycle in module/package import graph (Tarjan's SCC) |
 | 71 | `orphan-module` | — | note | imports | shipped | File has no incoming imports and is not a declared entry point |
 | 72 | `dependency-fan-out` | — | note | imports | shipped | Module imports 20+ other modules (high efferent coupling) |
@@ -137,7 +137,7 @@ All 19 passes operate on the `taint` graph. SARIF level: `error`.
 | **0 (done)** | Architecture foundation | — | CodeGraph lazy indexes, AnalysisPipeline, ProjectGraph, CrossFilePass, taxonomy types |
 | **1 (done)** | High-impact SAST passes | ~~#22, #24, #45, #35, #36, #20, #21, #28, #48, #50, #79, #81, #82, #33, #68, #71, #72~~ ✓ | scope graph, import graph |
 | **2 (done)** | Metrics engine | — (metrics, not passes) | MetricRunner + 9 metric passes; 24 metrics (LOC, NLOC, comment_density, function_count, cyclomatic_complexity, WMC, loop_complexity, condition_complexity, halstead_volume/difficulty/effort/bugs, data_flow_complexity, CBO, RFC, DIT, NOC, LCOM, doc_coverage, maintainability_index, code_quality_index, bug_hotspot_score, refactoring_roi) wired into `analyze()` |
-| **4** | Advanced graphs + passes | #23, #25, #26, #46, #47, #53, #54, #62, #64, #66, #74, #75, #76, P22, P33 | dominator tree, exception flow, type hierarchy wired to taint |
+| **4 (done)** | Advanced graphs + passes | ~~#23, #25, #26, #46, #47, #53, #54, #62, #64, #66, #74, #75, #76, P22, P33~~ ✓ | dominator tree, exception flow, type hierarchy wired to taint |
 
 > Phase 3 (LLM passes) and Phase 5 (semantic understanding) belong to **circle-ir-ai**.
 

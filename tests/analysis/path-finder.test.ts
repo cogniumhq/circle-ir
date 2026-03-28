@@ -351,5 +351,39 @@ describe('PathFinder', () => {
 
       expect(grouped.has('sql_injection') || grouped.has('xss')).toBe(true);
     });
+
+    it('should return paths originating from a specific source line', () => {
+      const dfg = createDFG(
+        [
+          { id: 1, variable: 'input', line: 5, kind: 'param' },
+        ],
+        [
+          { id: 1, variable: 'input', line: 10, def_id: 1 },
+        ]
+      );
+
+      const calls: CallInfo[] = [
+        {
+          method_name: 'executeQuery',
+          receiver: 'stmt',
+          arguments: [{ position: 0, expression: 'input', variable: 'input', literal: null }],
+          location: { line: 10, column: 0 },
+          in_method: 'test',
+        },
+      ];
+
+      const sources: TaintSource[] = [
+        { type: 'http_param', location: 'test', severity: 'high', line: 5, confidence: 0.9 },
+      ];
+
+      const sinks: TaintSink[] = [
+        { type: 'sql_injection', cwe: 'CWE-89', location: 'test', line: 10, confidence: 0.9 },
+      ];
+
+      const finder = new PathFinder(dfg, calls, sources, sinks, []);
+      const paths = finder.findPathsFromSourceLine(5);
+
+      expect(paths.every(p => p.source.line === 5)).toBe(true);
+    });
   });
 });

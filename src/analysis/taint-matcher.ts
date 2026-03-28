@@ -6,6 +6,7 @@
 
 import type { CallInfo, TypeInfo, TaintSource, TaintSink, TaintSanitizer, Taint, SourceType } from '../types/index.js';
 import type { TaintConfig, SourcePattern, SinkPattern, SanitizerPattern } from '../types/config.js';
+import type { TypeHierarchyResolver } from '../resolution/type-hierarchy.js';
 import { getDefaultConfig } from './config-loader.js';
 
 /**
@@ -34,10 +35,11 @@ const PYTHON_TAINTED_PATTERNS: Array<{ pattern: RegExp; sourceType: SourceType }
 export function analyzeTaint(
   calls: CallInfo[],
   types: TypeInfo[],
-  config: TaintConfig = getDefaultConfig()
+  config: TaintConfig = getDefaultConfig(),
+  typeHierarchy?: TypeHierarchyResolver,
 ): Taint {
   const sources = findSources(calls, types, config.sources);
-  const sinks = findSinks(calls, config.sinks);
+  const sinks = findSinks(calls, config.sinks, typeHierarchy);
   const sanitizers = findSanitizers(calls, types, config.sanitizers);
 
   return { sources, sinks, sanitizers };
@@ -293,13 +295,13 @@ function isParameterizedQueryCall(call: CallInfo, pattern: SinkPattern): boolean
  * Find taint sinks in method calls.
  * Deduplicates sinks at the same location+line+cwe, keeping highest confidence.
  */
-function findSinks(calls: CallInfo[], patterns: SinkPattern[]): TaintSink[] {
+function findSinks(calls: CallInfo[], patterns: SinkPattern[], typeHierarchy?: TypeHierarchyResolver): TaintSink[] {
   // Use a map to deduplicate by location+line+cwe
   const sinkMap = new Map<string, TaintSink>();
 
   for (const call of calls) {
     for (const pattern of patterns) {
-      if (matchesSinkPattern(call, pattern)) {
+      if (matchesSinkPattern(call, pattern, typeHierarchy)) {
         // Skip parameterized queries (safe pattern for SQL injection)
         if (isParameterizedQueryCall(call, pattern)) {
           continue;
@@ -437,7 +439,7 @@ function isJavaScriptTaintedArgument(
 /**
  * Check if a call matches a sink pattern.
  */
-function matchesSinkPattern(call: CallInfo, pattern: SinkPattern): boolean {
+function matchesSinkPattern(call: CallInfo, pattern: SinkPattern, typeHierarchy?: TypeHierarchyResolver): boolean {
   // Method name must match
   // Handle fully qualified names (e.g., "java.io.FileInputStream" should match "FileInputStream")
   const callMethodName = call.method_name;
@@ -465,6 +467,10 @@ function matchesSinkPattern(call: CallInfo, pattern: SinkPattern): boolean {
 
     // Check receiver - if pattern has class, receiver should match
     if (call.receiver && !receiverMightBeClass(call.receiver, pattern.class)) {
+      // Heuristic match failed; fall back to TypeHierarchyResolver if available
+      if (typeHierarchy && typeHierarchy.couldBeType(call.receiver, pattern.class)) {
+        return true;
+      }
       return false;
     }
 

@@ -113,6 +113,77 @@ import type { CircleIR } from '../../types/index.js';
 
 type Symbols = Map<string, { value: string | number | boolean | null; type: string; sourceLine: number }>;
 
+/**
+ * Evaluate a simple arithmetic expression containing only digits, spaces, and
+ * the operators +, -, *, /, and parentheses. Uses a recursive descent parser
+ * so no dynamic code execution (Function / eval) is needed.
+ */
+function evalArithmetic(input: string): number | null {
+  let pos = 0;
+
+  function peek(): string { return input[pos] ?? ''; }
+  function consume(): string { return input[pos++] ?? ''; }
+  function skipWs(): void { while (pos < input.length && input[pos] === ' ') pos++; }
+
+  function parseNumber(): number | null {
+    skipWs();
+    let s = '';
+    if (peek() === '-') { s += consume(); }
+    while (pos < input.length && /[\d.]/.test(input[pos]!)) s += consume();
+    if (s === '' || s === '-') return null;
+    const n = parseFloat(s);
+    return isFinite(n) ? n : null;
+  }
+
+  function parseFactor(): number | null {
+    skipWs();
+    if (peek() === '(') {
+      consume(); // '('
+      const val = parseExpr();
+      skipWs();
+      if (peek() === ')') consume();
+      return val;
+    }
+    return parseNumber();
+  }
+
+  function parseTerm(): number | null {
+    let left = parseFactor();
+    if (left === null) return null;
+    while (true) {
+      skipWs();
+      const op = peek();
+      if (op !== '*' && op !== '/') break;
+      consume();
+      const right = parseFactor();
+      if (right === null) return null;
+      left = op === '*' ? left * right : (right === 0 ? null : left / right);
+      if (left === null) return null;
+    }
+    return left;
+  }
+
+  function parseExpr(): number | null {
+    let left = parseTerm();
+    if (left === null) return null;
+    while (true) {
+      skipWs();
+      const op = peek();
+      if (op !== '+' && op !== '-') break;
+      consume();
+      const right = parseTerm();
+      if (right === null) return null;
+      left = op === '+' ? left + right : left - right;
+    }
+    return left;
+  }
+
+  if (!/^[\d\s+\-*/().]+$/.test(input)) return null;
+  const result = parseExpr();
+  skipWs();
+  return pos === input.length ? result : null;
+}
+
 function evaluateSimpleExpression(expr: string, symbols: Symbols): string {
   let evaluated = expr;
   for (const [name, val] of symbols) {
@@ -121,12 +192,8 @@ function evaluateSimpleExpression(expr: string, symbols: Symbols): string {
       evaluated = evaluated.replace(regex, String(val.value));
     }
   }
-  try {
-    if (/^[\d\s+\-*/().]+$/.test(evaluated)) {
-      const result = Function('"use strict"; return (' + evaluated + ')')();
-      if (typeof result === 'number' && !isNaN(result)) return String(Math.floor(result));
-    }
-  } catch { /* evaluation failed */ }
+  const result = evalArithmetic(evaluated);
+  if (result !== null && !isNaN(result)) return String(Math.floor(result));
   return expr;
 }
 

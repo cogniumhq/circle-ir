@@ -14,7 +14,7 @@
 import { describe, it, expect } from 'vitest';
 import { SinkFilterPass } from '../../../src/analysis/passes/sink-filter-pass.js';
 import { CodeGraph } from '../../../src/graph/code-graph.js';
-import type { CircleIR, TaintSink, TaintSource } from '../../../src/types/index.js';
+import type { CircleIR, TaintSink, TaintSource, TaintSanitizer } from '../../../src/types/index.js';
 import type { PassContext } from '../../../src/graph/analysis-pass.js';
 import type { TaintConfig } from '../../../src/types/config.js';
 import type { TaintMatcherResult } from '../../../src/analysis/passes/taint-matcher-pass.js';
@@ -71,7 +71,7 @@ function makeCtx(opts: {
   ir?: CircleIR;
   sources?: TaintSource[];
   sinks?: TaintSink[];
-  sanitizers?: TaintSink['type'][];
+  taintSanitizers?: TaintSanitizer[];
   additionalSources?: TaintSource[];
   additionalSinks?: TaintSink[];
   constProp?: ConstantPropagatorResult;
@@ -84,9 +84,9 @@ function makeCtx(opts: {
   const graph = new CodeGraph(ir);
 
   const taintMatcher: TaintMatcherResult = {
-    sources:          opts.sources   ?? [],
-    sinks:            opts.sinks     ?? [],
-    sanitizers:       [],
+    sources:          opts.sources         ?? [],
+    sinks:            opts.sinks           ?? [],
+    sanitizers:       opts.taintSanitizers ?? [],
     sanitizerMethods: [],
     config:           emptyConfig,
   };
@@ -515,6 +515,84 @@ describe('SinkFilterPass — Stage 3: nested inner-call does not suppress outer 
       in_method: 'doPost',
     });
     const ctx = makeCtx({ ir, sinks: [execSink] });
+    const result = new SinkFilterPass().run(ctx);
+    expect(result.sinks).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests: Stage 4 — sanitized sinks filter
+// ---------------------------------------------------------------------------
+
+describe('SinkFilterPass — Stage 4: sanitized sinks filter', () => {
+  it('filters a sql_injection sink when a class-qualified sanitizer call wraps the argument', () => {
+    // executeQuery(ESAPI.encodeForSQL(input)) → ESAPI.encodeForSQL is a class-qualified sanitizer
+    const sink = makeSink(10, 'sql_injection', 'CWE-89');
+    const ir = makeIR();
+    ir.calls.push({
+      method_name: 'executeQuery',
+      receiver:    'stmt',
+      arguments: [
+        { position: 0, expression: 'ESAPI.encodeForSQL(input)', variable: 'input', literal: null },
+      ],
+      location: { line: 10, column: 0 },
+      in_method: 'doGet',
+    });
+    const sanitizer: TaintSanitizer = {
+      type:      'sql_injection',
+      method:    'ESAPI.encodeForSQL()',
+      line:      10,
+      sanitizes: ['sql_injection'],
+    };
+    const ctx = makeCtx({ ir, sinks: [sink], taintSanitizers: [sanitizer] });
+    const result = new SinkFilterPass().run(ctx);
+    expect(result.sinks).toHaveLength(0);
+  });
+
+  it('keeps sink when sanitizer class name does not appear in the call argument', () => {
+    // executeQuery(input) — ESAPI sanitizer declared but not used in the expression
+    const sink = makeSink(10, 'sql_injection', 'CWE-89');
+    const ir = makeIR();
+    ir.calls.push({
+      method_name: 'executeQuery',
+      receiver:    'stmt',
+      arguments: [
+        { position: 0, expression: 'input', variable: 'input', literal: null },
+      ],
+      location: { line: 10, column: 0 },
+      in_method: 'doGet',
+    });
+    const sanitizer: TaintSanitizer = {
+      type:      'sql_injection',
+      method:    'ESAPI.encodeForSQL()',
+      line:      10,
+      sanitizes: ['sql_injection'],
+    };
+    const ctx = makeCtx({ ir, sinks: [sink], taintSanitizers: [sanitizer] });
+    const result = new SinkFilterPass().run(ctx);
+    expect(result.sinks).toHaveLength(1);
+  });
+
+  it('does not filter sink when sanitizer targets a different sink type', () => {
+    // Sanitizer sanitizes xss but the sink is sql_injection
+    const sink = makeSink(10, 'sql_injection', 'CWE-89');
+    const ir = makeIR();
+    ir.calls.push({
+      method_name: 'executeQuery',
+      receiver:    'stmt',
+      arguments: [
+        { position: 0, expression: 'escapeHtml(input)', variable: 'input', literal: null },
+      ],
+      location: { line: 10, column: 0 },
+      in_method: 'doGet',
+    });
+    const sanitizer: TaintSanitizer = {
+      type:      'xss',
+      method:    'escapeHtml()',
+      line:      10,
+      sanitizes: ['xss'],
+    };
+    const ctx = makeCtx({ ir, sinks: [sink], taintSanitizers: [sanitizer] });
     const result = new SinkFilterPass().run(ctx);
     expect(result.sinks).toHaveLength(1);
   });

@@ -4,7 +4,7 @@
  * Main entry point for analyzing source code and producing Circle-IR output.
  * This is the core static analyzer. LLM-based verification and discovery are out of scope for this library.
  *
- * The analysis pipeline runs thirty-two sequential passes over a shared CodeGraph:
+ * The analysis pipeline runs thirty-six sequential passes over a shared CodeGraph:
  *   1. TaintMatcherPass        — config-based source/sink extraction
  *   2. ConstantPropagationPass — dead-code detection, symbol table, field taint
  *   3. LanguageSourcesPass     — language-specific sources/sinks (JS, Python, getters)
@@ -37,6 +37,10 @@
  *  30. UnhandledExceptionPass    — throw/raise outside any try/catch (CWE-390)
  *  31. DoubleClosePass           — resource closed twice in same method (CWE-675)
  *  32. UseAfterClosePass         — method call on resource after close() (CWE-672)
+ *  33. MissingGuardDomPass       — sensitive op not dominated by auth check (CWE-285)
+ *  34. CleanupVerifyPass         — close() does not post-dominate acquisition (CWE-772)
+ *  35. MissingOverridePass       — overriding method lacks @Override (Java)
+ *  36. UnusedInterfaceMethodPass — interface method never called in file
  */
 
 import type { CircleIR, AnalysisResponse, Vulnerability, Enriched, ProjectAnalysis, ProjectMeta } from './types/index.js';
@@ -99,6 +103,10 @@ import { BroadCatchPass } from './analysis/passes/broad-catch-pass.js';
 import { UnhandledExceptionPass } from './analysis/passes/unhandled-exception-pass.js';
 import { DoubleClosePass } from './analysis/passes/double-close-pass.js';
 import { UseAfterClosePass } from './analysis/passes/use-after-close-pass.js';
+import { MissingGuardDomPass } from './analysis/passes/missing-guard-dom-pass.js';
+import { CleanupVerifyPass } from './analysis/passes/cleanup-verify-pass.js';
+import { MissingOverridePass } from './analysis/passes/missing-override-pass.js';
+import { UnusedInterfaceMethodPass } from './analysis/passes/unused-interface-method-pass.js';
 
 // Project-level pass imports
 import { ImportGraph } from './graph/import-graph.js';
@@ -352,6 +360,10 @@ export async function analyze(
     .add(new UnhandledExceptionPass())
     .add(new DoubleClosePass())
     .add(new UseAfterClosePass())
+    .add(new MissingGuardDomPass())
+    .add(new CleanupVerifyPass())
+    .add(new MissingOverridePass())
+    .add(new UnusedInterfaceMethodPass())
     .run(graph, code, language, config);
 
   const sinkFilter = results.get('sink-filter')    as SinkFilterResult;
