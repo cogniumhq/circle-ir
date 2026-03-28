@@ -134,11 +134,12 @@ export class SerialAwaitPass implements AnalysisPass<SerialAwaitResult> {
         level: 'note',
         message:
           `Serial awaits: \`${expr1}\` (line ${a1.line}) and \`${expr2}\` (line ${a2.line}) ` +
-          `have no data dependency; consider using Promise.all()`,
+          `appear to have no data dependency — verify ordering requirements before parallelising`,
         file,
         line: a1.line,
         end_line: a2.line,
-        fix: `const [result1, result2] = await Promise.all([operation1, operation2]);`,
+        fix: `If the operations are truly independent and have no ordering constraints, ` +
+          `consider: const [result1, result2] = await Promise.all([operation1, operation2]);`,
         evidence: {
           first_await_line: a1.line,
           second_await_line: a2.line,

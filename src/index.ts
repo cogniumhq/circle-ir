@@ -15,6 +15,9 @@ export {
   type AnalyzerOptions,
 } from './analyzer.js';
 
+// Per-pass option types (exported so consumers can type passOptions without importing from deep paths)
+export type { NamingConventionOptions } from './analysis/passes/naming-convention-pass.js';
+
 // Types
 export type {
   // Core IR types

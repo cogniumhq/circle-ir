@@ -7,6 +7,111 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.14.0] - 2026-03-28
+
+### Changed
+
+- **Removed `missing-guard-dom` (#53) from the default pipeline** — The pass fired with
+  high severity (`error`, CWE-285) on any Java codebase using framework-level authorization
+  (Spring Security annotations, filter chains, servlet filters). Those guards do not appear
+  as intra-method call nodes in the CFG, so every sensitive operation was reported as
+  unguarded regardless of actual protection. The pass file is retained at
+  `src/analysis/passes/missing-guard-dom-pass.ts` for direct use or for circle-ir-ai, which
+  can apply the same dominator analysis on top of LLM-identified auth guards. The raw signals
+  are already present in CircleIR: `ir.calls` (all call sites + method names) and `ir.cfg`
+  (full CFG from which a DominatorGraph can be rebuilt).
+
+- **Removed `feature-envy` (#87) from the default pipeline** — The call-count heuristic
+  (external_max ≥ 4 AND margin > 2 over internal calls) fires trivially on legitimate
+  delegation patterns: facades, controllers, and service classes that orchestrate collaborators
+  will look "envious" by definition. Confirming true feature envy requires understanding
+  design intent — whether the method belongs to the other class conceptually — which is LLM
+  territory. The pass file is retained at `src/analysis/passes/feature-envy-pass.ts`. Raw
+  signals are already present in CircleIR: `ir.calls` (per-site receiver + receiver_type) and
+  `ir.types` (per-method line ranges).
+
+- **`serial-await` fix message is now advisory** — The previous message prescribed
+  `Promise.all()` directly. The new message reads: "appear to have no data dependency —
+  verify ordering requirements before parallelising", with `Promise.all()` offered as a
+  conditional suggestion. This prevents incorrect refactors when the operations have semantic
+  ordering constraints (e.g., audit-after-persistence) that static analysis cannot see.
+
+- **`naming-convention` I-prefix rule is now opt-in (off by default)** — Flagging
+  `IUserRepository`-style TypeScript/Java interfaces is a style preference, not a language
+  standard; many codebases intentionally use the I-prefix. A new `NamingConventionOptions`
+  interface with `enforceIPrefix?: boolean` (default `false`) controls the rule. Enable it
+  via `AnalyzerOptions.passOptions.namingConvention.enforceIPrefix = true`. The `NamingConventionOptions`
+  type is re-exported from the package root.
+
+- Pipeline reduced from 42 to 40 active passes. `AnalyzerOptions` gains a `passOptions`
+  field for per-pass configuration.
+
+### Added
+
+- **`NamingConventionOptions`** exported from package root — allows consumers to configure
+  the naming-convention pass without importing from deep internal paths.
+
+## [3.13.0] - 2026-03-28
+
+### Added
+
+- **Pass #83 — `blocking-main-thread`** (`src/analysis/passes/blocking-main-thread-pass.ts`,
+  JS/TS, performance, CWE-1050) — Detects synchronous crypto/hashing operations (`pbkdf2Sync`,
+  `scryptSync`, `createHash`, `generateKeyPairSync`) and blocking `*Sync` calls inside HTTP
+  request handlers (NestJS `@Get`/`@Post` decorators, Express `(req, res)` parameters, handler
+  method names). Differentiated from `sync-io-async` (#48) by focusing on request-handler context
+  rather than generic async functions.
+
+- **Pass #84 — `excessive-allocation`** (`src/analysis/passes/excessive-allocation-pass.ts`,
+  all languages, performance, CWE-770) — Flags collection and object allocations inside loop
+  bodies that create GC pressure on every iteration (`new Map()`, `new ArrayList<>()`, `list()`,
+  `Vec::new()`). Skips lines with reuse signals (`pool`, `cache`, `preallocat`). All languages
+  except Bash.
+
+- **Pass #85 — `missing-stream`** (`src/analysis/passes/missing-stream-pass.ts`,
+  JS/TS/Java/Python, performance) — Detects whole-file / whole-response reads that load the
+  entire payload into memory: `readFileSync` / `response.text()` (JS/TS), `Files.readAllBytes`
+  / `BufferedReader` (Java), `f.read()` (Python). Skips JS/TS methods that already use streaming
+  (`.pipe()`, `createReadStream`, `for await`).
+
+- **Pass #86 — `god-class`** (`src/analysis/passes/god-class-pass.ts`,
+  Java/TS/Python, architecture, CWE-1060) — Detects classes exceeding 2 of 3 CK metric
+  thresholds: WMC > 47 (sum of cyclomatic complexity per method), LCOM2 > 0.8 (normalized lack
+  of cohesion, 0–1 scale), CBO > 14 (distinct external type references). All metrics computed
+  inline from `graph.ir.cfg` / `graph.ir.dfg` / `graph.ir.calls` — the separate MetricRunner
+  pipeline is not used.
+
+- **Pass #87 — `feature-envy`** (`src/analysis/passes/feature-envy-pass.ts`,
+  Java/TS/Python, architecture, CWE-1060) — Flags methods that call another class's methods
+  far more than their own (≥4 external calls AND external > internal + 2). Suggests moving
+  the method to the envied class.
+
+- **Pass #88 — `naming-convention`** (`src/analysis/passes/naming-convention-pass.ts`,
+  all languages, maintainability) — Enforces language-idiomatic naming rules:
+  Java/TS: PascalCase classes, camelCase methods, UPPER_SNAKE_CASE for `static final` fields,
+  no `I`-prefix on interfaces. Python: PascalCase classes, snake_case methods (dunder methods
+  exempt). Bash/Rust: snake_case functions. Capped at 20 findings per file.
+
+- **6 new test files** covering all new passes:
+  - `tests/analysis/passes/blocking-main-thread.test.ts` — 6 tests
+  - `tests/analysis/passes/excessive-allocation.test.ts` — 8 tests
+  - `tests/analysis/passes/missing-stream.test.ts` — 7 tests
+  - `tests/analysis/passes/god-class.test.ts` — 6 tests
+  - `tests/analysis/passes/feature-envy.test.ts` — 6 tests
+  - `tests/analysis/passes/naming-convention.test.ts` — 11 tests
+
+### Changed
+
+- **`src/analyzer.ts`** — pipeline extended from 36 to 42 passes; comment block updated.
+- **`docs/PASSES.md`** — passes #83–#88 registered; Phase 5 summary added.
+
+### Release notes
+
+Version 3.13.0 adds 6 new static analysis passes across performance, architecture, and
+maintainability categories, bringing the total to 42 passes in the pipeline.
+
+[3.13.0]: https://github.com/cogniumhq/circle-ir/compare/v3.12.1...v3.13.0
+
 ## [3.12.1] - 2026-03-28
 
 ### Changed

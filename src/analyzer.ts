@@ -4,7 +4,7 @@
  * Main entry point for analyzing source code and producing Circle-IR output.
  * This is the core static analyzer. LLM-based verification and discovery are out of scope for this library.
  *
- * The analysis pipeline runs thirty-six sequential passes over a shared CodeGraph:
+ * The analysis pipeline runs forty sequential passes over a shared CodeGraph:
  *   1. TaintMatcherPass        — config-based source/sink extraction
  *   2. ConstantPropagationPass — dead-code detection, symbol table, field taint
  *   3. LanguageSourcesPass     — language-specific sources/sinks (JS, Python, getters)
@@ -30,17 +30,25 @@
  *  23. DeepInheritancePass     — class inheritance depth > 5 (CWE-1086)
  *  24. RedundantLoopPass       — loop-invariant .length/.size()/Math.* (CWE-1050)
  *  25. UnboundedCollectionPass — collection grows in loop with no size limit (CWE-770)
- *  26. SerialAwaitPass           — independent sequential awaits in JS/TS (performance)
- *  27. ReactInlineJsxPass        — inline objects/functions in JSX props (performance)
- *  28. SwallowedExceptionPass    — catch blocks with no throw/log/return (CWE-390)
- *  29. BroadCatchPass            — catch(Exception) / bare except (CWE-396)
- *  30. UnhandledExceptionPass    — throw/raise outside any try/catch (CWE-390)
- *  31. DoubleClosePass           — resource closed twice in same method (CWE-675)
- *  32. UseAfterClosePass         — method call on resource after close() (CWE-672)
- *  33. MissingGuardDomPass       — sensitive op not dominated by auth check (CWE-285)
- *  34. CleanupVerifyPass         — close() does not post-dominate acquisition (CWE-772)
- *  35. MissingOverridePass       — overriding method lacks @Override (Java)
- *  36. UnusedInterfaceMethodPass — interface method never called in file
+ *  26. SerialAwaitPass         — sequential awaits with no data dependency (performance)
+ *  27. ReactInlineJsxPass      — inline objects/functions in JSX props (performance)
+ *  28. SwallowedExceptionPass  — catch blocks with no throw/log/return (CWE-390)
+ *  29. BroadCatchPass          — catch(Exception) / bare except (CWE-396)
+ *  30. UnhandledExceptionPass  — throw/raise outside any try/catch (CWE-390)
+ *  31. DoubleClosePass         — resource closed twice in same method (CWE-675)
+ *  32. UseAfterClosePass       — method call on resource after close() (CWE-672)
+ *  33. CleanupVerifyPass       — close() does not post-dominate acquisition (CWE-772)
+ *  34. MissingOverridePass     — overriding method lacks @Override (Java)
+ *  35. UnusedInterfaceMethodPass — interface method never called in file
+ *  36. BlockingMainThreadPass  — blocking crypto/*Sync calls in request handlers (CWE-1050)
+ *  37. ExcessiveAllocationPass — collection/object allocation inside loop bodies (CWE-770)
+ *  38. MissingStreamPass       — whole-file read without streaming (performance)
+ *  39. GodClassPass            — class with high WMC/LCOM2/CBO metrics (CWE-1060)
+ *  40. NamingConventionPass    — class/method names violate language conventions
+ *
+ * Removed from default pipeline (raw IR signals still available for circle-ir-ai):
+ *  – MissingGuardDomPass  — false positives in framework-auth codebases (see pass file)
+ *  – FeatureEnvyPass      — fires on legitimate delegation patterns (see pass file)
  */
 
 import type { CircleIR, AnalysisResponse, Vulnerability, Enriched, ProjectAnalysis, ProjectMeta } from './types/index.js';
@@ -103,10 +111,14 @@ import { BroadCatchPass } from './analysis/passes/broad-catch-pass.js';
 import { UnhandledExceptionPass } from './analysis/passes/unhandled-exception-pass.js';
 import { DoubleClosePass } from './analysis/passes/double-close-pass.js';
 import { UseAfterClosePass } from './analysis/passes/use-after-close-pass.js';
-import { MissingGuardDomPass } from './analysis/passes/missing-guard-dom-pass.js';
 import { CleanupVerifyPass } from './analysis/passes/cleanup-verify-pass.js';
 import { MissingOverridePass } from './analysis/passes/missing-override-pass.js';
 import { UnusedInterfaceMethodPass } from './analysis/passes/unused-interface-method-pass.js';
+import { BlockingMainThreadPass } from './analysis/passes/blocking-main-thread-pass.js';
+import { ExcessiveAllocationPass } from './analysis/passes/excessive-allocation-pass.js';
+import { MissingStreamPass } from './analysis/passes/missing-stream-pass.js';
+import { GodClassPass } from './analysis/passes/god-class-pass.js';
+import { NamingConventionPass, type NamingConventionOptions } from './analysis/passes/naming-convention-pass.js';
 
 // Project-level pass imports
 import { ImportGraph } from './graph/import-graph.js';
@@ -154,6 +166,14 @@ export interface AnalyzerOptions {
    * Custom taint configuration.
    */
   taintConfig?: TaintConfig;
+
+  /**
+   * Per-pass configuration options.
+   */
+  passOptions?: {
+    /** Options forwarded to NamingConventionPass (#88). */
+    namingConvention?: NamingConventionOptions;
+  };
 }
 
 let initialized = false;
@@ -360,10 +380,14 @@ export async function analyze(
     .add(new UnhandledExceptionPass())
     .add(new DoubleClosePass())
     .add(new UseAfterClosePass())
-    .add(new MissingGuardDomPass())
     .add(new CleanupVerifyPass())
     .add(new MissingOverridePass())
     .add(new UnusedInterfaceMethodPass())
+    .add(new BlockingMainThreadPass())
+    .add(new ExcessiveAllocationPass())
+    .add(new MissingStreamPass())
+    .add(new GodClassPass())
+    .add(new NamingConventionPass(options.passOptions?.namingConvention))
     .run(graph, code, language, config);
 
   const sinkFilter = results.get('sink-filter')    as SinkFilterResult;

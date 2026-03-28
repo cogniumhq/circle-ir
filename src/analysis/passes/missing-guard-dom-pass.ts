@@ -1,6 +1,24 @@
 /**
  * Pass: missing-guard-dom (#53, CWE-285)
  *
+ * @deprecated NOT REGISTERED IN THE DEFAULT PIPELINE
+ *
+ * This pass was removed from the default AnalysisPipeline in v3.14.0 because
+ * its hardcoded auth-method list (12 names) produces high-severity false
+ * positives in any codebase that uses framework-level authorization (Spring
+ * Security annotations, filter chains, middleware) — those guards never appear
+ * as intra-method call nodes in the CFG, so every sensitive operation looks
+ * unguarded.
+ *
+ * The raw signals this pass relies on are already present in CircleIR:
+ *   • ir.calls  — all call sites with method_name; filter AUTH_METHODS /
+ *                 SENSITIVE_METHODS to identify candidates.
+ *   • ir.cfg    — full CFG (blocks + edges); build DominatorGraph from it.
+ *
+ * This file is retained so that circle-ir-ai can reconstruct the dominator
+ * analysis on top of LLM-identified auth guards (which correctly handle
+ * annotations, middleware, and framework-specific patterns).
+ *
  * Detects sensitive operations that are not dominated by an authentication
  * or authorization check on all control-flow paths within the same method.
  *

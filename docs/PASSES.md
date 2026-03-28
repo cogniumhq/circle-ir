@@ -74,7 +74,7 @@ All 19 passes operate on the `taint` graph. SARIF level: `error`.
 | 28 | `unchecked-return` | CWE-252 | warning | cg, dfg | shipped | Return value ignored where most callers check it (statistical) |
 | 48 | `sync-io-async` | CWE-1050 | warning | ast, cg | shipped | Blocking I/O call (`readFileSync`, `requests.get`) inside async function |
 | 50 | `string-concat-loop` | CWE-1046 | warning | dfg, cfg | shipped | `string +=` inside loop body (O(n²) allocations) |
-| 53 | `missing-guard-dom` | CWE-285 | error | dom, cg | shipped | Auth check exists but does not dominate the sensitive operation (Java only) |
+| 53 | `missing-guard-dom` | CWE-285 | error | dom, cg | **removed from pipeline** (v3.14.0) | High FP rate in framework-auth codebases; raw signals in `ir.calls`+`ir.cfg`; reserved for circle-ir-ai |
 | 54 | `cleanup-verify` | CWE-772 | warning | dom, dfg | shipped | Resource cleanup does not post-dominate its acquisition (Java, Python, JS/TS) |
 | 74 | `unhandled-exception` | CWE-390 | warning | cfg | shipped | throw/raise not covered by any try/catch in the same function (JS/TS, Python) |
 | 75 | `broad-catch` | CWE-396 | warning | cfg | shipped | catch(Exception) / bare except — catches more than intended (Java, Python) |
@@ -95,6 +95,9 @@ All 19 passes operate on the `taint` graph. SARIF level: `error`.
 | 49 | `unnecessary-object-hotpath` | — | note | cfg, ast | llm-only | Object construction in loop with invariant constructor args |
 | P22 | `serial-await` | — | note | dfg, ast | shipped | Sequential awaits with no data dependency (JS/TS only; suggest Promise.all) |
 | P33 | `react-inline-jsx` | — | note | ast | shipped | Inline object/function in JSX props (defeats React.memo; JS/TS only) |
+| 83 | `blocking-main-thread` | CWE-1050 | warning | ast, cg | shipped | Crypto/*Sync calls inside HTTP request handlers (JS/TS); stalls event loop |
+| 84 | `excessive-allocation` | CWE-770 | warning | cfg, ast | shipped | Collection/object allocation inside loop body; GC pressure |
+| 85 | `missing-stream` | — | note | ast, cg | shipped | Whole-file / whole-response read without streaming (JS/TS, Java, Python) |
 
 ---
 
@@ -114,6 +117,7 @@ All 19 passes operate on the `taint` graph. SARIF level: `error`.
 | 39 | `inconsistent-naming` | — | note | ast | llm-only | 95%+ of boolean getters are isX/hasX; outlier uses different pattern |
 | 40 | `inconsistent-param-order` | — | note | ast | llm-only | Related functions have different parameter ordering |
 | 44 | `magic-numbers` | — | note | ast, dfg | llm-only | Unexplained numeric literal in non-constant context |
+| 88 | `naming-convention` | — | note | ast | shipped | Class/method/field names violate language conventions (PascalCase, camelCase, snake_case); I-prefix interface check is opt-in via `passOptions.namingConvention.enforceIPrefix` |
 
 ---
 
@@ -127,6 +131,8 @@ All 19 passes operate on the `taint` graph. SARIF level: `error`.
 | 68 | `circular-dependency` | CWE-1047 | warning | imports | shipped | Cycle in module/package import graph (Tarjan's SCC) |
 | 71 | `orphan-module` | — | note | imports | shipped | File has no incoming imports and is not a declared entry point |
 | 72 | `dependency-fan-out` | — | note | imports | shipped | Module imports 20+ other modules (high efferent coupling) |
+| 86 | `god-class` | CWE-1060 | warning | cfg, dfg, cg | shipped | Class with high WMC (>47), LCOM2 (>0.8), or CBO (>14) — 2 of 3 thresholds |
+| 87 | `feature-envy` | CWE-1060 | note | cg | **removed from pipeline** (v3.14.0) | Fires on legitimate delegation/facade patterns; raw signals in `ir.calls`+`ir.types`; reserved for circle-ir-ai |
 
 ---
 
@@ -138,6 +144,7 @@ All 19 passes operate on the `taint` graph. SARIF level: `error`.
 | **1 (done)** | High-impact SAST passes | ~~#22, #24, #45, #35, #36, #20, #21, #28, #48, #50, #79, #81, #82, #33, #68, #71, #72~~ ✓ | scope graph, import graph |
 | **2 (done)** | Metrics engine | — (metrics, not passes) | MetricRunner + 9 metric passes; 24 metrics (LOC, NLOC, comment_density, function_count, cyclomatic_complexity, WMC, loop_complexity, condition_complexity, halstead_volume/difficulty/effort/bugs, data_flow_complexity, CBO, RFC, DIT, NOC, LCOM, doc_coverage, maintainability_index, code_quality_index, bug_hotspot_score, refactoring_roi) wired into `analyze()` |
 | **4 (done)** | Advanced graphs + passes | ~~#23, #25, #26, #46, #47, #53, #54, #62, #64, #66, #74, #75, #76, P22, P33~~ ✓ | dominator tree, exception flow, type hierarchy wired to taint |
+| **5 (done)** | Performance + Architecture + Maintainability | ~~#83, #84, #85, #86, #87, #88~~ ✓ | blocking handler detection, in-loop allocation, whole-file read, god class, feature envy, naming conventions |
 
 > Phase 3 (LLM passes) and Phase 5 (semantic understanding) belong to **circle-ir-ai**.
 
