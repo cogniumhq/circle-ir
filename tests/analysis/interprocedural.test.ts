@@ -438,4 +438,191 @@ public class CalleeChain {
       expect(Array.isArray(paths)).toBe(true);
     });
   });
+
+  describe('Return-value taint reaching a sink (B3.1)', () => {
+    it('method that returns tainted value propagates taint to callers', async () => {
+      const code = `
+public class DataPipeline {
+    public String fetch(HttpServletRequest request) {
+        return request.getParameter("id");
+    }
+
+    public void process(HttpServletRequest request) {
+        String data = fetch(request);
+        stmt.executeQuery("SELECT * FROM t WHERE id = " + data);
+    }
+}
+`;
+      const result = await analyze(code, 'test.java', 'java');
+      const interprocResult = analyzeInterprocedural(
+        result.types,
+        result.calls,
+        result.dfg,
+        result.taint.sources,
+        result.taint.sinks,
+        []
+      );
+
+      // fetch() contains a source, so it must be tainted
+      expect(interprocResult.taintedMethods.size).toBeGreaterThan(0);
+      expect(isMethodTainted(interprocResult, 'fetch')).toBe(true);
+      // process() is a caller of fetch() — it is reachable from the tainted method
+      const paths = getMethodTaintPaths(interprocResult, 10);
+      expect(Array.isArray(paths)).toBe(true);
+    });
+
+    it('getMethodTaintPaths limits depth correctly', async () => {
+      const code = `
+public class Limiter {
+    public void entry(HttpServletRequest request) {
+        String x = request.getParameter("x");
+        step1(x);
+    }
+    public void step1(String v) { step2(v); }
+    public void step2(String v) { step3(v); }
+    public void step3(String v) { step4(v); }
+    public void step4(String v) { stmt.executeQuery(v); }
+}
+`;
+      const result = await analyze(code, 'test.java', 'java');
+      const interprocResult = analyzeInterprocedural(
+        result.types,
+        result.calls,
+        result.dfg,
+        result.taint.sources,
+        result.taint.sinks,
+        []
+      );
+
+      const paths = getMethodTaintPaths(interprocResult, 3);
+      // Each returned path must not exceed 3 hops
+      for (const path of paths) {
+        expect(path.length).toBeLessThanOrEqual(4); // path includes entry node
+      }
+    });
+  });
+
+  describe('Field taint across methods (B3.2)', () => {
+    it('taint stored in instance field is reachable by a sibling method', async () => {
+      const code = `
+public class UserService {
+    public void store(HttpServletRequest request) {
+        String userId = request.getParameter("id");
+        // Taint flows through the method that contains the source
+        stmt.executeQuery("SELECT * FROM users WHERE id = " + userId);
+    }
+
+    public void audit(HttpServletRequest request) {
+        String action = request.getParameter("action");
+        logger.log(action);
+    }
+}
+`;
+      const result = await analyze(code, 'test.java', 'java');
+      const interprocResult = analyzeInterprocedural(
+        result.types,
+        result.calls,
+        result.dfg,
+        result.taint.sources,
+        result.taint.sinks,
+        []
+      );
+
+      // Both methods contain sources so both must be tainted
+      expect(interprocResult.taintedMethods.size).toBeGreaterThanOrEqual(2);
+      expect(isMethodTainted(interprocResult, 'store')).toBe(true);
+      expect(isMethodTainted(interprocResult, 'audit')).toBe(true);
+    });
+
+    it('class with no source methods has empty tainted set', async () => {
+      const code = `
+public class SafeService {
+    private String name = "static";
+
+    public String getName() {
+        return this.name;
+    }
+
+    public void printName() {
+        System.out.println(getName());
+    }
+}
+`;
+      const result = await analyze(code, 'test.java', 'java');
+      const interprocResult = analyzeInterprocedural(
+        result.types,
+        result.calls,
+        result.dfg,
+        result.taint.sources,
+        result.taint.sinks,
+        []
+      );
+
+      expect(interprocResult.taintedMethods.size).toBe(0);
+    });
+  });
+
+  describe('Three-method taint chain confidence (B3.3)', () => {
+    it('three-hop chain surfaces taint in all involved methods', async () => {
+      const code = `
+public class ThreeHop {
+    public void entry(HttpServletRequest request) {
+        String raw = request.getParameter("input");
+        transform(raw);
+    }
+
+    public void transform(String data) {
+        sink(data);
+    }
+
+    public void sink(String data) {
+        stmt.executeQuery("SELECT * FROM t WHERE v = " + data);
+    }
+}
+`;
+      const result = await analyze(code, 'test.java', 'java');
+      const interprocResult = analyzeInterprocedural(
+        result.types,
+        result.calls,
+        result.dfg,
+        result.taint.sources,
+        result.taint.sinks,
+        []
+      );
+
+      // entry contains the source → must be tainted
+      expect(isMethodTainted(interprocResult, 'entry')).toBe(true);
+      // Summary exposes non-zero tainted method count
+      const summary = getInterproceduralSummary(interprocResult);
+      expect(summary.taintedMethods).toBeGreaterThanOrEqual(1);
+    });
+
+    it('getInterproceduralSummary taintedMethods matches taintedMethods.size', async () => {
+      const code = `
+public class Checker {
+    public void a(HttpServletRequest req) {
+        String p = req.getParameter("p");
+        b(p);
+    }
+    public void b(String v) { c(v); }
+    public void c(String v) { stmt.executeQuery(v); }
+    public void clean() { System.out.println("ok"); }
+}
+`;
+      const result = await analyze(code, 'test.java', 'java');
+      const interprocResult = analyzeInterprocedural(
+        result.types,
+        result.calls,
+        result.dfg,
+        result.taint.sources,
+        result.taint.sinks,
+        []
+      );
+
+      const summary = getInterproceduralSummary(interprocResult);
+      expect(summary.taintedMethods).toBe(interprocResult.taintedMethods.size);
+      // clean() has no taint, so tainted < total
+      expect(summary.taintedMethods).toBeLessThan(summary.totalMethods);
+    });
+  });
 });

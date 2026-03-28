@@ -4,7 +4,7 @@
  * Provides Java-specific AST handling, taint patterns, and framework detection.
  */
 
-import type { Node as SyntaxNode } from 'web-tree-sitter';
+import type { Node as SyntaxNode, Tree } from 'web-tree-sitter';
 import type {
   TypeInfo,
   CallInfo,
@@ -60,6 +60,9 @@ export class JavaPlugin extends BaseLanguagePlugin {
     tryStatement: ['try_statement', 'try_with_resources_statement'],
     returnStatement: ['return_statement'],
   };
+
+  /** Cache: maps a parse Tree to its var-name → simple-type map. */
+  private readonly _typeMapCache = new WeakMap<Tree, Map<string, string>>();
 
   /**
    * Detect Java frameworks from imports and annotations.
@@ -365,6 +368,50 @@ export class JavaPlugin extends BaseLanguagePlugin {
   }
 
   /**
+   * Walk `tree` once and build a map of { variableName → simpleTypeName }.
+   * Covers both field declarations and local variable declarations.
+   * Generics and array brackets are stripped: `List<String>` → `List`, `int[]` → `int`.
+   * Result is cached per Tree instance so subsequent calls are O(1).
+   */
+  private buildVarTypeMap(tree: Tree): Map<string, string> {
+    const cached = this._typeMapCache.get(tree);
+    if (cached) return cached;
+
+    const map = new Map<string, string>();
+
+    const collectDecl = (declNode: SyntaxNode): void => {
+      const typeNode = declNode.childForFieldName('type');
+      if (!typeNode) return;
+      const raw = typeNode.text;
+      const baseType = raw.includes('<')
+        ? raw.substring(0, raw.indexOf('<')).trim()
+        : raw.replace(/\[\]/g, '').trim();
+
+      for (let i = 0; i < declNode.childCount; i++) {
+        const child = declNode.child(i);
+        if (child?.type === 'variable_declarator') {
+          const nameNode = child.childForFieldName('name');
+          if (nameNode) map.set(nameNode.text, baseType);
+        }
+      }
+    };
+
+    const walk = (node: SyntaxNode): void => {
+      if (node.type === 'field_declaration' || node.type === 'local_variable_declaration') {
+        collectDecl(node);
+      }
+      for (let i = 0; i < node.childCount; i++) {
+        const child = node.child(i);
+        if (child) walk(child);
+      }
+    };
+
+    walk(tree.rootNode);
+    this._typeMapCache.set(tree, map);
+    return map;
+  }
+
+  /**
    * Get receiver type from a method invocation node.
    */
   getReceiverType(node: SyntaxNode, context: ExtractionContext): string | undefined {
@@ -373,15 +420,13 @@ export class JavaPlugin extends BaseLanguagePlugin {
     const receiver = node.childForFieldName('object');
     if (!receiver) return undefined;
 
-    // If receiver is an identifier, look up its type
+    // If receiver is an identifier, resolve its declared type from the parse tree
     if (receiver.type === 'identifier') {
-      const name = receiver.text;
-      // Try to find variable declaration to get type
-      // This is a simplified lookup - full implementation would use scope analysis
-      return undefined;  // TODO: Implement type resolution
+      const typeMap = this.buildVarTypeMap(context.tree);
+      return typeMap.get(receiver.text);
     }
 
-    // If receiver is a field access, return the field type
+    // If receiver is a field access, return the field text (class or qualified name)
     if (receiver.type === 'field_access') {
       return receiver.text;
     }

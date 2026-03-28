@@ -146,23 +146,23 @@ Numbers follow COGNIUM_IMPLEMENTATION_GUIDE §10 Week 12-14.
 - [x] **P2**: Pass-level unit tests (`tests/analysis/passes/*.test.ts`) — each pass testable with minimal `PassContext` fixture
 - [x] **P2**: `ScopeGraph` implementation for Phase 1 Group 3 (done in v3.9.3)
 - [x] **P2**: `ImportGraph` implementation for Phase 1 Group 4 (done in v3.9.4)
-- [ ] **P2**: Implement type resolution TODO in `src/languages/plugins/java.ts:427`
+- [x] **P2**: Implement type resolution TODO in `src/languages/plugins/java.ts` — `buildVarTypeMap` + `WeakMap` cache (done in v3.12.0)
 
 ---
 
 ## Ongoing: Test Coverage
 
-Current coverage: ~77%. Target: ≥75% (met).
+Current coverage: 86.56% stmts / 73.09% branches / 91.28% functions / 88.85% lines. Target: ≥75% stmts (met).
 `src/resolution/**` is excluded — exercised via `tests/analysis/project-graph.test.ts`.
 
 | File | Coverage | Priority | Notes |
 |------|----------|----------|-------|
-| `src/languages/plugins/bash.ts` | ~60% | P2 | Bash language plugin |
-| `src/languages/plugins/python.ts` | ~13% | P2 | Python plugin — needs real Python IR fixtures |
+| `src/languages/plugins/bash.ts` | improved | ✅ done | `bash-coverage.test.ts` added in v3.12.0 |
+| `src/languages/plugins/python.ts` | improved | ✅ done | `python-ir.test.ts` added in v3.12.0 |
 | `src/languages/plugins/rust.ts` | ~13% | P3 | Rust plugin — low usage |
 
-- [ ] **P2**: Add tests for Bash plugin edge cases (command substitution, here-docs)
-- [ ] **P2**: Add tests for `dfg.ts` inter-procedural data flow
+- [x] **P2**: Add tests for Bash plugin edge cases (done in v3.12.0 — `tests/languages/bash-coverage.test.ts`)
+- [x] **P2**: Add tests for `dfg.ts` inter-procedural data flow (done in v3.12.0 — `tests/analysis/interprocedural.test.ts`)
 
 ---
 

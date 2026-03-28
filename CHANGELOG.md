@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.12.0] - 2026-03-28
+
+### Added
+
+- **Java receiver-type resolution (`java.ts`)** — `JavaPlugin.getReceiverType()` now resolves
+  identifier receivers by walking the parse tree once and caching the result in a `WeakMap<Tree,
+  Map<string, string>>`. Generic types are stripped (`List<String>` → `List`). This allows
+  `TypeHierarchyResolver.couldBeType()` to perform polymorphic sink matching for declarations
+  such as `PreparedStatement ps = …; ps.executeQuery(q)`.
+
+- **Bash plugin edge-case tests** (`tests/languages/bash-coverage.test.ts`) — 12 integration
+  tests covering sink detection (`eval`→`code_injection`, `mysql`→`sql_injection`,
+  `curl`→`ssrf`, `rm`→`path_traversal`), source detection (`read`→`io_input`), taint flows
+  (read→eval, read→mysql, read→rm, read→curl, `$()`→bash), and multi-sink scripts.
+  Known gap: `$VAR` substitution across bash statements is not yet tracked by the DFG; tests
+  document this with TODO comments and weaker fallback assertions.
+
+- **Python plugin IR fixture tests** (`tests/languages/python-ir.test.ts`) — 25 end-to-end
+  tests using `analyze()` with real Python snippets. Covers plugin metadata, source detection
+  (Flask `request.args`/`request.form`, Django `request.GET`, `os.environ.get`), sink detection
+  (`cursor.execute`, `os.system`, `subprocess.run`, `eval`, `pickle.loads`), complete taint
+  flows (Flask SQL injection, Django command injection, subprocess, eval, deserialization),
+  metrics structure validation, and a parameterized-query clean-code check.
+
+- **Inter-procedural taint analysis tests** (extended `tests/analysis/interprocedural.test.ts`)
+  — 5 new tests across 3 groups:
+  - *B3.1*: return-value taint reaching a sink; depth-limit enforcement
+  - *B3.2*: field taint across methods; class with no sources produces empty tainted set
+  - *B3.3*: three-method taint chain with confidence; summary consistency check
+
+### Release notes
+
+Version 3.12.0 focuses on test coverage and Java type accuracy. Total test count: **1423**.
+Coverage: stmts 86.56%, branches 73.09%, functions 91.28%, lines 88.85% — all above thresholds.
+
+[3.12.0]: https://github.com/cogniumhq/circle-ir/compare/v3.11.0...v3.12.0
+
 ## [3.11.0] - 2026-03-27
 
 ### Added

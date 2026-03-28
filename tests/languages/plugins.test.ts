@@ -994,4 +994,99 @@ describe('Language Plugins', () => {
       });
     });
   });
+
+  describe('JavaPlugin.getReceiverType — type resolution', () => {
+    const plugin = new JavaPlugin();
+
+    /** Walk the subtree and return the first method_invocation whose object.text matches `receiverName`. */
+    function findInvocation(node: any, receiverName: string): any {
+      if (node.type === 'method_invocation') {
+        const obj = node.childForFieldName('object');
+        if (obj?.text === receiverName) return node;
+      }
+      for (let i = 0; i < node.childCount; i++) {
+        const child = node.child(i);
+        if (child) {
+          const found = findInvocation(child, receiverName);
+          if (found) return found;
+        }
+      }
+      return null;
+    }
+
+    it('resolves local variable type (no generics)', async () => {
+      const code = `
+class Test {
+  void test() {
+    PreparedStatement ps = conn.prepareStatement(sql);
+    ps.executeQuery(q);
+  }
+}`;
+      const tree = await parse(code, 'java');
+      const ctx = { filePath: 'Test.java', sourceCode: code, tree, imports: [] } as any;
+      const node = findInvocation(tree.rootNode, 'ps');
+      expect(node).not.toBeNull();
+      expect(plugin.getReceiverType(node, ctx)).toBe('PreparedStatement');
+    });
+
+    it('strips generics from local variable type', async () => {
+      const code = `
+class Test {
+  void test() {
+    List<String> items = new ArrayList<>();
+    items.add(x);
+  }
+}`;
+      const tree = await parse(code, 'java');
+      const ctx = { filePath: 'Test.java', sourceCode: code, tree, imports: [] } as any;
+      const node = findInvocation(tree.rootNode, 'items');
+      expect(node).not.toBeNull();
+      expect(plugin.getReceiverType(node, ctx)).toBe('List');
+    });
+
+    it('resolves field declaration type', async () => {
+      const code = `
+class Test {
+  Connection conn;
+  void test() {
+    conn.createStatement();
+  }
+}`;
+      const tree = await parse(code, 'java');
+      const ctx = { filePath: 'Test.java', sourceCode: code, tree, imports: [] } as any;
+      const node = findInvocation(tree.rootNode, 'conn');
+      expect(node).not.toBeNull();
+      expect(plugin.getReceiverType(node, ctx)).toBe('Connection');
+    });
+
+    it('returns undefined for undeclared identifier', async () => {
+      const code = `
+class Test {
+  void test() {
+    undeclared.foo();
+  }
+}`;
+      const tree = await parse(code, 'java');
+      const ctx = { filePath: 'Test.java', sourceCode: code, tree, imports: [] } as any;
+      const node = findInvocation(tree.rootNode, 'undeclared');
+      expect(node).not.toBeNull();
+      expect(plugin.getReceiverType(node, ctx)).toBeUndefined();
+    });
+
+    it('uses cached map on second call', async () => {
+      const code = `
+class Test {
+  void test() {
+    StringBuilder sb = new StringBuilder();
+    sb.append(x);
+  }
+}`;
+      const tree = await parse(code, 'java');
+      const ctx = { filePath: 'Test.java', sourceCode: code, tree, imports: [] } as any;
+      const node = findInvocation(tree.rootNode, 'sb');
+      expect(plugin.getReceiverType(node, ctx)).toBe('StringBuilder');
+      // Second call must hit cache and return the same result
+      expect(plugin.getReceiverType(node, ctx)).toBe('StringBuilder');
+    });
+  });
 });
