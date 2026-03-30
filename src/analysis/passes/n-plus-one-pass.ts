@@ -52,13 +52,30 @@ const MEDIUM_CONFIDENCE_DB_METHODS: ReadonlySet<string> = new Set([
   'load', 'lookup',
 ]);
 
-/** Receiver names that indicate a DB or HTTP client. */
-const DB_OR_HTTP_RECEIVER = /^(db|conn|connection|pool|client|repo|repository|orm|em|entityManager|sequelize|mongoose|prisma|axios|http|https|api|svc|service|dao|store|cache|gql|graphql)/i;
+/**
+ * Receiver patterns that indicate a DB or HTTP client.
+ *
+ * Two-tier matching:
+ *   1. Prefix match: names starting with db, conn, pool, repo, etc.
+ *   2. Suffix match: names ending with Repository, Repo, Dao, Service, Client, etc.
+ *
+ * This catches both `dbConnection.query()` and `userRepository.find()`.
+ */
+const DB_OR_HTTP_RECEIVER_PREFIX = /^(db|conn|connection|pool|client|repo|repository|orm|em|entityManager|sequelize|mongoose|prisma|axios|http|https|api|svc|service|dao|store|cache|gql|graphql|mongo|redis|sql|pg|mysql|sqlite|dynamo|cosmos|elastic|es|solr|neo4j|cassandra|couchbase|firestore|supabase|drizzle|knex|typeorm|mikro)/i;
+
+const DB_OR_HTTP_RECEIVER_SUFFIX = /(?:Repository|Repo|Dao|DataSource|DbContext|Client|Service|Store|Cache|Gateway|Adapter|Provider|Manager|Handler|Proxy|Facade|Connection|Pool|Session|Template|Mapper|Access|Query|Command|Storage|Bucket|Table|Collection|Index)$/;
+
+/**
+ * Check if a receiver name indicates a DB or HTTP client.
+ */
+function isDbOrHttpReceiver(receiver: string): boolean {
+  return DB_OR_HTTP_RECEIVER_PREFIX.test(receiver) || DB_OR_HTTP_RECEIVER_SUFFIX.test(receiver);
+}
 
 function isDbOrApiCall(call: CallInfo): boolean {
   if (HIGH_CONFIDENCE_DB_METHODS.has(call.method_name)) return true;
   if (MEDIUM_CONFIDENCE_DB_METHODS.has(call.method_name)) {
-    return call.receiver != null && DB_OR_HTTP_RECEIVER.test(call.receiver);
+    return call.receiver != null && isDbOrHttpReceiver(call.receiver);
   }
   return false;
 }

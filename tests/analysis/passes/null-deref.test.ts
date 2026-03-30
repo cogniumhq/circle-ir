@@ -225,4 +225,143 @@ describe('NullDerefPass', () => {
     expect(findings[0].category).toBe('reliability');
     expect(findings[0].id).toMatch(/^null-deref-/);
   });
+
+  // ---------------------------------------------------------------------------
+  // Tests for additional null guard patterns (Java assertions and utility methods)
+  // ---------------------------------------------------------------------------
+
+  it('does NOT flag when `assert x != null` guard precedes use', () => {
+    const code = 'x = null;\nassert x != null;\nx.process();\n';
+    const defs = [makeDef(1, 'x', 1, 'null')];
+    const uses = [makeUse(1, 'x', 3, 1)];
+    const calls = [makeCall('process', 3, 'x')];
+    const types = [{
+      name: 'App', kind: 'class' as const, methods: [makeMethod('run', 1, 10)],
+      fields: [], annotations: [], modifiers: [], start_line: 1, end_line: 10,
+    }];
+    const ir = makeIR(code, calls, defs, uses, types);
+    const { ctx, findings } = makeCtx(ir, code);
+    new NullDerefPass().run(ctx);
+    expect(findings).toHaveLength(0);
+  });
+
+  it('does NOT flag when `assert null != x` guard precedes use', () => {
+    const code = 'x = null;\nassert null != x;\nx.process();\n';
+    const defs = [makeDef(1, 'x', 1, 'null')];
+    const uses = [makeUse(1, 'x', 3, 1)];
+    const calls = [makeCall('process', 3, 'x')];
+    const types = [{
+      name: 'App', kind: 'class' as const, methods: [makeMethod('run', 1, 10)],
+      fields: [], annotations: [], modifiers: [], start_line: 1, end_line: 10,
+    }];
+    const ir = makeIR(code, calls, defs, uses, types);
+    const { ctx, findings } = makeCtx(ir, code);
+    new NullDerefPass().run(ctx);
+    expect(findings).toHaveLength(0);
+  });
+
+  it('does NOT flag when Objects.requireNonNull(x) guard precedes use', () => {
+    const code = 'x = null;\nObjects.requireNonNull(x);\nx.process();\n';
+    const defs = [makeDef(1, 'x', 1, 'null')];
+    const uses = [makeUse(1, 'x', 3, 1)];
+    const calls = [makeCall('process', 3, 'x')];
+    const types = [{
+      name: 'App', kind: 'class' as const, methods: [makeMethod('run', 1, 10)],
+      fields: [], annotations: [], modifiers: [], start_line: 1, end_line: 10,
+    }];
+    const ir = makeIR(code, calls, defs, uses, types);
+    const { ctx, findings } = makeCtx(ir, code);
+    new NullDerefPass().run(ctx);
+    expect(findings).toHaveLength(0);
+  });
+
+  it('does NOT flag when requireNonNull(x) (without Objects.) guard precedes use', () => {
+    const code = 'x = null;\nrequireNonNull(x);\nx.process();\n';
+    const defs = [makeDef(1, 'x', 1, 'null')];
+    const uses = [makeUse(1, 'x', 3, 1)];
+    const calls = [makeCall('process', 3, 'x')];
+    const types = [{
+      name: 'App', kind: 'class' as const, methods: [makeMethod('run', 1, 10)],
+      fields: [], annotations: [], modifiers: [], start_line: 1, end_line: 10,
+    }];
+    const ir = makeIR(code, calls, defs, uses, types);
+    const { ctx, findings } = makeCtx(ir, code);
+    new NullDerefPass().run(ctx);
+    expect(findings).toHaveLength(0);
+  });
+
+  it('does NOT flag when Preconditions.checkNotNull(x) guard precedes use', () => {
+    const code = 'x = null;\nPreconditions.checkNotNull(x);\nx.process();\n';
+    const defs = [makeDef(1, 'x', 1, 'null')];
+    const uses = [makeUse(1, 'x', 3, 1)];
+    const calls = [makeCall('process', 3, 'x')];
+    const types = [{
+      name: 'App', kind: 'class' as const, methods: [makeMethod('run', 1, 10)],
+      fields: [], annotations: [], modifiers: [], start_line: 1, end_line: 10,
+    }];
+    const ir = makeIR(code, calls, defs, uses, types);
+    const { ctx, findings } = makeCtx(ir, code);
+    new NullDerefPass().run(ctx);
+    expect(findings).toHaveLength(0);
+  });
+
+  it('does NOT flag when checkNotNull(x) (without Preconditions.) guard precedes use', () => {
+    const code = 'x = null;\ncheckNotNull(x);\nx.process();\n';
+    const defs = [makeDef(1, 'x', 1, 'null')];
+    const uses = [makeUse(1, 'x', 3, 1)];
+    const calls = [makeCall('process', 3, 'x')];
+    const types = [{
+      name: 'App', kind: 'class' as const, methods: [makeMethod('run', 1, 10)],
+      fields: [], annotations: [], modifiers: [], start_line: 1, end_line: 10,
+    }];
+    const ir = makeIR(code, calls, defs, uses, types);
+    const { ctx, findings } = makeCtx(ir, code);
+    new NullDerefPass().run(ctx);
+    expect(findings).toHaveLength(0);
+  });
+
+  it('does NOT flag when Assert.notNull(x, msg) guard precedes use', () => {
+    const code = 'x = null;\nAssert.notNull(x, "x cannot be null");\nx.process();\n';
+    const defs = [makeDef(1, 'x', 1, 'null')];
+    const uses = [makeUse(1, 'x', 3, 1)];
+    const calls = [makeCall('process', 3, 'x')];
+    const types = [{
+      name: 'App', kind: 'class' as const, methods: [makeMethod('run', 1, 10)],
+      fields: [], annotations: [], modifiers: [], start_line: 1, end_line: 10,
+    }];
+    const ir = makeIR(code, calls, defs, uses, types);
+    const { ctx, findings } = makeCtx(ir, code);
+    new NullDerefPass().run(ctx);
+    expect(findings).toHaveLength(0);
+  });
+
+  it('does NOT flag when assertNotNull(x) guard precedes use', () => {
+    const code = 'x = null;\nassertNotNull(x);\nx.process();\n';
+    const defs = [makeDef(1, 'x', 1, 'null')];
+    const uses = [makeUse(1, 'x', 3, 1)];
+    const calls = [makeCall('process', 3, 'x')];
+    const types = [{
+      name: 'App', kind: 'class' as const, methods: [makeMethod('run', 1, 10)],
+      fields: [], annotations: [], modifiers: [], start_line: 1, end_line: 10,
+    }];
+    const ir = makeIR(code, calls, defs, uses, types);
+    const { ctx, findings } = makeCtx(ir, code);
+    new NullDerefPass().run(ctx);
+    expect(findings).toHaveLength(0);
+  });
+
+  it('does NOT flag when Assertions.assertNotNull(x) guard precedes use', () => {
+    const code = 'x = null;\nAssertions.assertNotNull(x);\nx.process();\n';
+    const defs = [makeDef(1, 'x', 1, 'null')];
+    const uses = [makeUse(1, 'x', 3, 1)];
+    const calls = [makeCall('process', 3, 'x')];
+    const types = [{
+      name: 'App', kind: 'class' as const, methods: [makeMethod('run', 1, 10)],
+      fields: [], annotations: [], modifiers: [], start_line: 1, end_line: 10,
+    }];
+    const ir = makeIR(code, calls, defs, uses, types);
+    const { ctx, findings } = makeCtx(ir, code);
+    new NullDerefPass().run(ctx);
+    expect(findings).toHaveLength(0);
+  });
 });

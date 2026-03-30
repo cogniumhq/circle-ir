@@ -239,4 +239,148 @@ describe('NPlusOnePass', () => {
     expect(findings[0].evidence).toHaveProperty('loop_start');
     expect(findings[0].evidence).toHaveProperty('loop_end');
   });
+
+  // ---------------------------------------------------------------------------
+  // Tests for suffix-based receiver matching (userRepository, orderDao, etc.)
+  // ---------------------------------------------------------------------------
+
+  it('flags medium-confidence method with *Repository suffix receiver', () => {
+    const cfg = loopCfg();
+    const calls = [makeCall('find', 3, 'userRepository')];
+    const ir = makeIR(calls, cfg);
+    const { ctx, findings } = makeCtx(ir);
+    const result = new NPlusOnePass().run(ctx);
+    expect(result.loopDbCalls).toHaveLength(1);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].message).toMatch(/find/);
+  });
+
+  it('flags medium-confidence method with *Repo suffix receiver', () => {
+    const cfg = loopCfg();
+    const calls = [makeCall('save', 3, 'orderRepo')];
+    const ir = makeIR(calls, cfg);
+    const { ctx, findings } = makeCtx(ir);
+    const result = new NPlusOnePass().run(ctx);
+    expect(result.loopDbCalls).toHaveLength(1);
+    expect(findings).toHaveLength(1);
+  });
+
+  it('flags medium-confidence method with *Dao suffix receiver', () => {
+    const cfg = loopCfg();
+    const calls = [makeCall('query', 3, 'productDao')];
+    const ir = makeIR(calls, cfg);
+    const { ctx, findings } = makeCtx(ir);
+    const result = new NPlusOnePass().run(ctx);
+    expect(result.loopDbCalls).toHaveLength(1);
+  });
+
+  it('flags medium-confidence method with *Service suffix receiver', () => {
+    const cfg = loopCfg();
+    const calls = [makeCall('get', 3, 'paymentService')];
+    const ir = makeIR(calls, cfg);
+    const { ctx, findings } = makeCtx(ir);
+    const result = new NPlusOnePass().run(ctx);
+    expect(result.loopDbCalls).toHaveLength(1);
+  });
+
+  it('flags medium-confidence method with *Client suffix receiver', () => {
+    const cfg = loopCfg();
+    const calls = [makeCall('post', 3, 'apiClient')];
+    const ir = makeIR(calls, cfg);
+    const { ctx, findings } = makeCtx(ir);
+    const result = new NPlusOnePass().run(ctx);
+    expect(result.loopDbCalls).toHaveLength(1);
+  });
+
+  it('flags medium-confidence method with *DataSource suffix receiver', () => {
+    const cfg = loopCfg();
+    const calls = [makeCall('execute', 3, 'mainDataSource')];
+    const ir = makeIR(calls, cfg);
+    const { ctx, findings } = makeCtx(ir);
+    const result = new NPlusOnePass().run(ctx);
+    expect(result.loopDbCalls).toHaveLength(1);
+  });
+
+  it('flags medium-confidence method with *Gateway suffix receiver', () => {
+    const cfg = loopCfg();
+    const calls = [makeCall('request', 3, 'paymentGateway')];
+    const ir = makeIR(calls, cfg);
+    const { ctx, findings } = makeCtx(ir);
+    const result = new NPlusOnePass().run(ctx);
+    expect(result.loopDbCalls).toHaveLength(1);
+  });
+
+  it('flags medium-confidence method with *Store suffix receiver', () => {
+    const cfg = loopCfg();
+    const calls = [makeCall('load', 3, 'sessionStore')];
+    const ir = makeIR(calls, cfg);
+    const { ctx, findings } = makeCtx(ir);
+    const result = new NPlusOnePass().run(ctx);
+    expect(result.loopDbCalls).toHaveLength(1);
+  });
+
+  it('flags medium-confidence method with *Cache suffix receiver', () => {
+    const cfg = loopCfg();
+    const calls = [makeCall('get', 3, 'redisCache')];
+    const ir = makeIR(calls, cfg);
+    const { ctx, findings } = makeCtx(ir);
+    const result = new NPlusOnePass().run(ctx);
+    expect(result.loopDbCalls).toHaveLength(1);
+  });
+
+  it('flags medium-confidence method with *Collection suffix receiver', () => {
+    const cfg = loopCfg();
+    const calls = [makeCall('find', 3, 'usersCollection')];
+    const ir = makeIR(calls, cfg);
+    const { ctx, findings } = makeCtx(ir);
+    const result = new NPlusOnePass().run(ctx);
+    expect(result.loopDbCalls).toHaveLength(1);
+  });
+
+  it('flags medium-confidence method with *Mapper suffix receiver', () => {
+    const cfg = loopCfg();
+    const calls = [makeCall('insert', 3, 'userMapper')];
+    const ir = makeIR(calls, cfg);
+    const { ctx, findings } = makeCtx(ir);
+    const result = new NPlusOnePass().run(ctx);
+    expect(result.loopDbCalls).toHaveLength(1);
+  });
+
+  it('still does not flag medium-confidence method with unrecognized receiver', () => {
+    const cfg = loopCfg();
+    const calls = [makeCall('find', 3, 'myHelper')]; // no matching suffix or prefix
+    const ir = makeIR(calls, cfg);
+    const { ctx, findings } = makeCtx(ir);
+    const result = new NPlusOnePass().run(ctx);
+    expect(result.loopDbCalls).toHaveLength(0);
+    expect(findings).toHaveLength(0);
+  });
+
+  // Test new prefix patterns added
+  it('flags medium-confidence method with mongo prefix receiver', () => {
+    const cfg = loopCfg();
+    const calls = [makeCall('find', 3, 'mongoClient')];
+    const ir = makeIR(calls, cfg);
+    const { ctx, findings } = makeCtx(ir);
+    const result = new NPlusOnePass().run(ctx);
+    expect(result.loopDbCalls).toHaveLength(1);
+  });
+
+  it('flags medium-confidence method with redis prefix receiver', () => {
+    const cfg = loopCfg();
+    const calls = [makeCall('get', 3, 'redisConnection')];
+    const ir = makeIR(calls, cfg);
+    const { ctx, findings } = makeCtx(ir);
+    const result = new NPlusOnePass().run(ctx);
+    expect(result.loopDbCalls).toHaveLength(1);
+  });
+
+  it('flags medium-confidence method with pg prefix receiver', () => {
+    const cfg = loopCfg();
+    const calls = [makeCall('query', 3, 'pgPool')];
+    const ir = makeIR(calls, cfg);
+    const { ctx, findings } = makeCtx(ir);
+    const result = new NPlusOnePass().run(ctx);
+    expect(result.loopDbCalls).toHaveLength(1);
+  });
 });

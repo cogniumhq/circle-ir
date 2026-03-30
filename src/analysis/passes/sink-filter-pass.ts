@@ -22,6 +22,28 @@ import type { ConstantPropagatorResult } from './constant-propagation-pass.js';
 import type { LanguageSourcesResult } from './language-sources-pass.js';
 import { JS_TAINTED_PATTERNS } from './language-sources-pass.js';
 
+/**
+ * Common XSS sanitizer patterns for JavaScript/TypeScript.
+ * These indicate the assigned value has been sanitized before use.
+ */
+const JS_XSS_SANITIZERS = [
+  /\bDOMPurify\.sanitize\s*\(/,
+  /\bsanitizeHtml\s*\(/,
+  /\bsanitize\s*\(/,
+  /\bescapeHtml\s*\(/,
+  /\bescapeHTML\s*\(/,
+  /\bhtmlEscape\s*\(/,
+  /\bxss\s*\(/,              // xss library
+  /\bxssFilters\./,          // xss-filters library
+  /\bvalidator\.escape\s*\(/,
+  /\b(?:he|entities)\.encode\s*\(/,
+  /\bencodeURIComponent\s*\(/,
+  /\bencodeURI\s*\(/,
+  /\bcreateSafeHTML\s*\(/,
+  /\btrustAsHtml\s*\(/,      // Angular
+  /\bbypassSecurityTrust/,   // Angular
+];
+
 export interface SinkFilterResult {
   /** Merged sources: taint-matcher + language-sources. */
   sources: TaintSource[];
@@ -89,16 +111,57 @@ export class SinkFilterPass implements AnalysisPass<SinkFilterResult> {
     // Stage 6 — JavaScript XSS FP reduction
     if (['javascript', 'typescript'].includes(language)) {
       const { jsTaintedVars } = langSources;
-      if (jsTaintedVars.size > 0) {
-        const sourceLines = ctx.code.split('\n');
-        filtered = filtered.filter(sink => {
-          if (sink.type !== 'xss') return true;
-          const sinkLineText = sourceLines[sink.line - 1] ?? '';
+      const sourceLines = ctx.code.split('\n');
+
+      filtered = filtered.filter(sink => {
+        if (sink.type !== 'xss') return true;
+        const sinkLineText = sourceLines[sink.line - 1] ?? '';
+
+        // 6a. If a sanitizer is used on this line, suppress the finding
+        if (JS_XSS_SANITIZERS.some(p => p.test(sinkLineText))) return false;
+
+        // 6b. If the RHS is a pure string literal, suppress (e.g., `.innerHTML = "<div>Hello</div>"`)
+        //     Match: `.innerHTML = "..."` or `.innerHTML = '...'` or `.innerHTML = `...``
+        const assignmentMatch = sinkLineText.match(/\.(?:innerHTML|outerHTML)\s*=\s*(.+)/);
+        if (assignmentMatch) {
+          // Strip trailing semicolon and whitespace
+          const rhs = assignmentMatch[1].trim().replace(/;$/, '').trim();
+          // Pure double-quoted string literal
+          if (/^"[^"]*"$/.test(rhs)) return false;
+          // Pure single-quoted string literal
+          if (/^'[^']*'$/.test(rhs)) return false;
+          // Template literal without interpolation
+          if (/^`[^`]*`$/.test(rhs) && !rhs.includes('${')) return false;
+          // Empty string
+          if (rhs === '""' || rhs === "''" || rhs === '``') return false;
+        }
+
+        // 6c. If known tainted vars exist, require one on this line to keep the sink
+        if (jsTaintedVars.size > 0) {
           if ([...jsTaintedVars.keys()].some(v => new RegExp(`\\b${v}\\b`).test(sinkLineText))) return true;
           if (JS_TAINTED_PATTERNS.some(p => p.pattern.test(sinkLineText))) return true;
           return false;
-        });
-      }
+        }
+
+        // 6d. No tainted vars tracked — check if line has any obvious taint source patterns
+        //     If none found and RHS looks like a variable, keep the sink (conservative)
+        if (JS_TAINTED_PATTERNS.some(p => p.pattern.test(sinkLineText))) return true;
+
+        // 6e. Check if RHS is a known constant from constant propagation
+        if (assignmentMatch) {
+          const rhsClean = assignmentMatch[1].trim().replace(/;$/, '').trim();
+          // If RHS is just an identifier, check if it's a known constant
+          const identMatch = rhsClean.match(/^(\w+)$/);
+          if (identMatch) {
+            const varName = identMatch[1];
+            const symbolInfo = constProp.symbols.get(varName);
+            if (symbolInfo && symbolInfo.type === 'string') return false;
+          }
+        }
+
+        // Default: keep the sink (conservative when no taint info available)
+        return true;
+      });
     }
 
     return { sources, sinks: filtered, sanitizers };

@@ -37,6 +37,11 @@ function escRe(s: string): string {
  *   - Python: `x is not None`, `if x:`
  *   - Optional chaining: `x?.`
  *   - Optional API: `x.isPresent()`, `Optional`
+ *   - Java assertions: `assert x != null`
+ *   - Java stdlib: `Objects.requireNonNull(x)`
+ *   - Guava: `Preconditions.checkNotNull(x)`
+ *   - Spring: `Assert.notNull(x, ...)`
+ *   - JUnit/TestNG: `assertNotNull(x)`
  */
 function hasNullGuard(
   codeLines: string[],
@@ -56,7 +61,18 @@ function hasNullGuard(
     `|if\\s*\\(\\s*${esc}\\s*[)!&|]` +                  // if (x), if (!x)
     `|if\\s+${esc}\\s*:` +                               // Python: if x:
     `|\\b${esc}\\b\\s*\\.\\s*isPresent\\(\\)` +          // Optional.isPresent()
-    `|\\bOptional\\b`,
+    `|\\bOptional\\b` +
+    // Java assertion: assert x != null
+    `|\\bassert\\s+${esc}\\s*!=\\s*null\\b` +
+    `|\\bassert\\s+null\\s*!=\\s*${esc}\\b` +
+    // Java stdlib: Objects.requireNonNull(x) or requireNonNull(x)
+    `|\\b(?:Objects\\.)?requireNonNull\\s*\\(\\s*${esc}\\b` +
+    // Guava: Preconditions.checkNotNull(x) or checkNotNull(x)
+    `|\\b(?:Preconditions\\.)?checkNotNull\\s*\\(\\s*${esc}\\b` +
+    // Spring: Assert.notNull(x, ...) or notNull(x)
+    `|\\b(?:Assert\\.)?notNull\\s*\\(\\s*${esc}\\b` +
+    // JUnit/TestNG: assertNotNull(x) or Assertions.assertNotNull(x)
+    `|\\b(?:Assertions?\\.)?assertNotNull\\s*\\(\\s*${esc}\\b`,
   );
 
   for (let l = fromLine; l < toLine; l++) {

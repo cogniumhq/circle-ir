@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.15.0] - 2026-03-29
+
+### Changed
+
+- **`null-deref` pass (#20) — expanded null guard detection** — Added 6 new guard patterns:
+  - Java assertions: `assert x != null`, `assert null != x`
+  - Java stdlib: `Objects.requireNonNull(x)`
+  - Guava: `Preconditions.checkNotNull(x)`
+  - Spring: `Assert.notNull(x, ...)`
+  - JUnit/TestNG: `assertNotNull(x)`, `Assertions.assertNotNull(x)`
+
+  These patterns are now recognized as valid null guards, reducing false positives when
+  developers use assertion-based or utility-method null checks.
+
+- **`n-plus-one` pass (#45) — improved receiver detection** — Expanded medium-confidence
+  method detection with two-tier matching:
+  - **Prefix matching**: Added `mongo*`, `redis*`, `pg*`, `mysql*`, `sqlite*`, `dynamo*`,
+    `cosmos*`, `elastic*`, `neo4j*`, `cassandra*`, `firestore*`, `supabase*`, `drizzle*`,
+    `knex*`, `typeorm*`, `mikro*` prefixes
+  - **Suffix matching**: Added `*Repository`, `*Repo`, `*Dao`, `*DataSource`, `*DbContext`,
+    `*Client`, `*Service`, `*Store`, `*Cache`, `*Gateway`, `*Adapter`, `*Provider`,
+    `*Manager`, `*Handler`, `*Proxy`, `*Facade`, `*Connection`, `*Pool`, `*Session`,
+    `*Template`, `*Mapper`, `*Access`, `*Query`, `*Command`, `*Storage`, `*Bucket`,
+    `*Table`, `*Collection`, `*Index` suffixes
+
+  This catches `userRepository.find()` and similar custom repository patterns that were
+  previously missed.
+
+- **`sink-filter` pass (XSS) — reduced false positives** — Enhanced Stage 6 JavaScript XSS
+  filtering:
+  - **Sanitizer detection**: Added 15 common XSS sanitizer patterns including `DOMPurify.sanitize()`,
+    `sanitizeHtml()`, `escapeHtml()`, `validator.escape()`, `xss()`, `encodeURIComponent()`,
+    Angular's `bypassSecurityTrust*()`, and more
+  - **String literal suppression**: `.innerHTML = "static string"` assignments with pure
+    string literals (double-quoted, single-quoted, or template literals without interpolation)
+    are now suppressed
+  - **Constant propagation integration**: If the RHS of an innerHTML assignment is a known
+    string constant from constant propagation, the sink is suppressed
+
+### Added
+
+- **40 new tests** for the improved passes:
+  - 9 tests for null-deref guard patterns
+  - 15 tests for N+1 receiver suffix matching
+  - 16 tests for XSS sanitizer and string literal filtering
+
+### Release notes
+
+Version 3.15.0 improves the accuracy of three high-impact passes, reducing both false
+positives and false negatives. Total test count: **1512**.
+
+[3.15.0]: https://github.com/cogniumhq/circle-ir/compare/v3.14.0...v3.15.0
+
 ## [3.14.0] - 2026-03-28
 
 ### Changed

@@ -384,6 +384,201 @@ describe('SinkFilterPass — Stage 6: JavaScript XSS FP reduction', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Tests: Stage 6 — JavaScript XSS FP reduction (sanitizers and string literals)
+// ---------------------------------------------------------------------------
+
+describe('SinkFilterPass — Stage 6: XSS sanitizer and string literal filtering', () => {
+  it('removes xss sink when DOMPurify.sanitize() is used on the line', () => {
+    const code = 'element.innerHTML = DOMPurify.sanitize(userInput);';
+    const sink = makeSink(1, 'xss', 'CWE-79');
+    const ctx  = makeCtx({
+      language: 'javascript',
+      code,
+      sinks: [sink],
+    });
+    const result = new SinkFilterPass().run(ctx);
+    expect(result.sinks).toHaveLength(0);
+  });
+
+  it('removes xss sink when sanitizeHtml() is used on the line', () => {
+    const code = 'element.innerHTML = sanitizeHtml(content);';
+    const sink = makeSink(1, 'xss', 'CWE-79');
+    const ctx  = makeCtx({
+      language: 'javascript',
+      code,
+      sinks: [sink],
+    });
+    const result = new SinkFilterPass().run(ctx);
+    expect(result.sinks).toHaveLength(0);
+  });
+
+  it('removes xss sink when escapeHtml() is used on the line', () => {
+    const code = 'element.innerHTML = escapeHtml(userInput);';
+    const sink = makeSink(1, 'xss', 'CWE-79');
+    const ctx  = makeCtx({
+      language: 'javascript',
+      code,
+      sinks: [sink],
+    });
+    const result = new SinkFilterPass().run(ctx);
+    expect(result.sinks).toHaveLength(0);
+  });
+
+  it('removes xss sink when validator.escape() is used on the line', () => {
+    const code = 'element.innerHTML = validator.escape(input);';
+    const sink = makeSink(1, 'xss', 'CWE-79');
+    const ctx  = makeCtx({
+      language: 'javascript',
+      code,
+      sinks: [sink],
+    });
+    const result = new SinkFilterPass().run(ctx);
+    expect(result.sinks).toHaveLength(0);
+  });
+
+  it('removes xss sink when encodeURIComponent() is used on the line', () => {
+    const code = 'element.innerHTML = encodeURIComponent(query);';
+    const sink = makeSink(1, 'xss', 'CWE-79');
+    const ctx  = makeCtx({
+      language: 'javascript',
+      code,
+      sinks: [sink],
+    });
+    const result = new SinkFilterPass().run(ctx);
+    expect(result.sinks).toHaveLength(0);
+  });
+
+  it('removes xss sink when innerHTML is assigned a double-quoted string literal', () => {
+    const code = 'element.innerHTML = "<div>Hello World</div>";';
+    const sink = makeSink(1, 'xss', 'CWE-79');
+    const ctx  = makeCtx({
+      language: 'javascript',
+      code,
+      sinks: [sink],
+    });
+    const result = new SinkFilterPass().run(ctx);
+    expect(result.sinks).toHaveLength(0);
+  });
+
+  it('removes xss sink when innerHTML is assigned a single-quoted string literal', () => {
+    const code = "element.innerHTML = '<span>Safe</span>';";
+    const sink = makeSink(1, 'xss', 'CWE-79');
+    const ctx  = makeCtx({
+      language: 'javascript',
+      code,
+      sinks: [sink],
+    });
+    const result = new SinkFilterPass().run(ctx);
+    expect(result.sinks).toHaveLength(0);
+  });
+
+  it('removes xss sink when innerHTML is assigned an empty string', () => {
+    const code = 'element.innerHTML = "";';
+    const sink = makeSink(1, 'xss', 'CWE-79');
+    const ctx  = makeCtx({
+      language: 'javascript',
+      code,
+      sinks: [sink],
+    });
+    const result = new SinkFilterPass().run(ctx);
+    expect(result.sinks).toHaveLength(0);
+  });
+
+  it('removes xss sink when outerHTML is assigned a string literal', () => {
+    const code = 'element.outerHTML = "<div>Replacement</div>";';
+    const sink = makeSink(1, 'xss', 'CWE-79');
+    const ctx  = makeCtx({
+      language: 'javascript',
+      code,
+      sinks: [sink],
+    });
+    const result = new SinkFilterPass().run(ctx);
+    expect(result.sinks).toHaveLength(0);
+  });
+
+  it('removes xss sink when innerHTML is assigned a template literal without interpolation', () => {
+    const code = 'element.innerHTML = `<div>Static content</div>`;';
+    const sink = makeSink(1, 'xss', 'CWE-79');
+    const ctx  = makeCtx({
+      language: 'javascript',
+      code,
+      sinks: [sink],
+    });
+    const result = new SinkFilterPass().run(ctx);
+    expect(result.sinks).toHaveLength(0);
+  });
+
+  it('keeps xss sink when innerHTML is assigned a template literal WITH interpolation', () => {
+    const code = 'element.innerHTML = `<div>${userInput}</div>`;';
+    const sink = makeSink(1, 'xss', 'CWE-79');
+    const ctx  = makeCtx({
+      language: 'javascript',
+      code,
+      sinks: [sink],
+      jsTaintedVars: new Map([['userInput', 1]]),
+    });
+    const result = new SinkFilterPass().run(ctx);
+    expect(result.sinks).toHaveLength(1);
+  });
+
+  it('keeps xss sink when innerHTML is assigned a variable (not a literal)', () => {
+    const code = 'element.innerHTML = content;';
+    const sink = makeSink(1, 'xss', 'CWE-79');
+    const ctx  = makeCtx({
+      language: 'javascript',
+      code,
+      sinks: [sink],
+    });
+    const result = new SinkFilterPass().run(ctx);
+    expect(result.sinks).toHaveLength(1);
+  });
+
+  it('removes xss sink when innerHTML RHS is a known string constant from constProp', () => {
+    const code = 'element.innerHTML = staticContent;';
+    const sink = makeSink(1, 'xss', 'CWE-79');
+    const symbols = new Map([
+      ['staticContent', { value: '<div>Safe</div>', type: 'string', sourceLine: 1 }],
+    ]);
+    const ctx = makeCtx({
+      language: 'javascript',
+      code,
+      sinks: [sink],
+      constProp: makeConstProp({ symbols }),
+    });
+    const result = new SinkFilterPass().run(ctx);
+    expect(result.sinks).toHaveLength(0);
+  });
+
+  it('keeps xss sink when variable is not a known constant', () => {
+    const code = 'element.innerHTML = dynamicContent;';
+    const sink = makeSink(1, 'xss', 'CWE-79');
+    const symbols = new Map([
+      ['dynamicContent', { value: null, type: 'unknown', sourceLine: 1 }],
+    ]);
+    const ctx = makeCtx({
+      language: 'javascript',
+      code,
+      sinks: [sink],
+      constProp: makeConstProp({ symbols }),
+    });
+    const result = new SinkFilterPass().run(ctx);
+    expect(result.sinks).toHaveLength(1);
+  });
+
+  it('removes xss sink when Angular bypassSecurityTrust is used', () => {
+    const code = 'this.safeHtml = this.sanitizer.bypassSecurityTrustHtml(content);';
+    const sink = makeSink(1, 'xss', 'CWE-79');
+    const ctx  = makeCtx({
+      language: 'typescript',
+      code,
+      sinks: [sink],
+    });
+    const result = new SinkFilterPass().run(ctx);
+    expect(result.sinks).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Tests: Stage 3 — clean variable filter (nested inner-call false positive)
 // ---------------------------------------------------------------------------
 // Regression for: Runtime.exec() not recognized as command_injection sink when
