@@ -321,6 +321,7 @@ function findSinks(calls: CallInfo[], patterns: SinkPattern[], typeHierarchy?: T
             line: call.location.line,
             confidence,
             method: call.method_name,
+            argPositions: pattern.arg_positions,
           });
         }
       }
@@ -438,6 +439,46 @@ function isJavaScriptTaintedArgument(
 }
 
 /**
+ * Receivers that are known NOT to be dangerous for a given method name.
+ *
+ * This prevents classless sink patterns (e.g. generic "exec()" for
+ * Runtime.getRuntime().exec()) from matching unrelated APIs that happen
+ * to share the same method name (e.g. RegExp.exec(), db.exec()).
+ *
+ * Keys are method names; values are lowercase receiver prefixes/names
+ * that should be excluded from matching.
+ */
+const SAFE_RECEIVERS_BY_METHOD: Record<string, Set<string>> = {
+  // RegExp.exec(), Pattern.exec() — not command/code execution
+  exec: new Set([
+    'regex', 'regexp', 'pattern', 're', 'rx', 'match', 'matcher',
+    // Database APIs — db.exec() is SQL, not command injection
+    'db', 'database', 'sqlite', 'conn', 'connection', 'client',
+    'pool', 'knex', 'prisma', 'sequelize', 'transaction', 'tx',
+    'stmt', 'statement', 'cursor',
+  ]),
+};
+
+/**
+ * Check if a receiver is known to be safe (non-dangerous) for a given
+ * method name and sink type.  Used to suppress false positives from
+ * classless sink patterns.
+ */
+function isKnownSafeReceiverForMethod(receiver: string, method: string, _sinkType: string): boolean {
+  const safeReceivers = SAFE_RECEIVERS_BY_METHOD[method];
+  if (!safeReceivers) return false;
+
+  const lowerReceiver = receiver.toLowerCase();
+  // Check direct match or prefix match (e.g. "regexPattern" starts with "regex")
+  for (const safe of safeReceivers) {
+    if (lowerReceiver === safe || lowerReceiver.startsWith(safe)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Check if a call matches a sink pattern.
  */
 function matchesSinkPattern(call: CallInfo, pattern: SinkPattern, typeHierarchy?: TypeHierarchyResolver): boolean {
@@ -477,6 +518,16 @@ function matchesSinkPattern(call: CallInfo, pattern: SinkPattern, typeHierarchy?
 
     // If no receiver but class is required, don't match
     if (!call.receiver) {
+      return false;
+    }
+  }
+
+  // If no class specified but the call has a receiver, check that the receiver
+  // is not a known non-dangerous API.  Without this guard, classless patterns
+  // such as the generic "exec()" command-injection entry (intended for
+  // Runtime.getRuntime().exec()) match unrelated methods like RegExp.exec().
+  if (!pattern.class && call.receiver) {
+    if (isKnownSafeReceiverForMethod(call.receiver, call.method_name, pattern.type)) {
       return false;
     }
   }

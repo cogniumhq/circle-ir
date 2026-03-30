@@ -137,6 +137,11 @@ function detectCollectionFlows(
 
     for (const call of callsAtSink) {
       for (const arg of call.arguments) {
+        // Skip arguments that are not in the sink's dangerous positions
+        if (sink.argPositions && sink.argPositions.length > 0 &&
+            !sink.argPositions.includes(arg.position)) {
+          continue;
+        }
         if (arg.variable) {
           const varName = arg.variable;
           const scopedName = call.in_method ? `${call.in_method}:${varName}` : varName;
@@ -218,6 +223,11 @@ function detectArrayElementFlows(
 
     for (const call of callsAtSink) {
       for (const arg of call.arguments) {
+        // Skip arguments that are not in the sink's dangerous positions
+        if (sink.argPositions && sink.argPositions.length > 0 &&
+            !sink.argPositions.includes(arg.position)) {
+          continue;
+        }
         const arrayAccessMatch = arg.expression?.match(/^(\w+)\[(\d+|[^[\]]+)\]$/);
         if (arrayAccessMatch) {
           const arrayName = arrayAccessMatch[1];
@@ -292,6 +302,12 @@ function detectParameterSinkFlows(
 
       for (const arg of call.arguments) {
         if (arg.variable) {
+          // Skip arguments that are not in the sink's dangerous positions.
+          // E.g., execSync(cmd, { cwd: path }) — only arg 0 is a command injection sink.
+          if (sink.argPositions && sink.argPositions.length > 0 &&
+              !sink.argPositions.includes(arg.position)) {
+            continue;
+          }
           const paramSource = methodParamSources.get(arg.variable);
           if (paramSource) {
             const exists = flows.some(f => f.source_line === paramSource.line && f.sink_line === sink.line);

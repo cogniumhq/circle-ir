@@ -150,6 +150,14 @@ export function propagateTaint(
     for (const call of callsAtSink) {
       for (const arg of call.arguments) {
         if (arg.variable) {
+          // If the sink defines dangerous argument positions, skip safe positions.
+          // For example, execSync(cmd, opts) has arg_positions: [0] — only arg 0
+          // (the command string) is a sink; arg 1 (options with cwd) is safe.
+          if (sink.argPositions && sink.argPositions.length > 0) {
+            if (!sink.argPositions.includes(arg.position)) {
+              continue;
+            }
+          }
           // Find if this variable use is tainted
           for (const use of usesAtSink) {
             if (use.variable === arg.variable && use.def_id !== null) {

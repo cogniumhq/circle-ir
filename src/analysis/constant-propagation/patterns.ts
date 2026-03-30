@@ -100,7 +100,7 @@ export const SANITIZER_METHODS = new Set([
 
   // Path Validation and Normalization
   'normalizePath', 'normalizeLineEndings', 'isPathWithin', 'isPathWithinAllowedDirectories',
-  'isPathAllowed', 'relative', 'join',
+  'isPathAllowed', 'resolve', 'relative', 'join',
 
   // General
   'sanitize', 'encode', 'escape', 'clean', 'filter', 'validate', 'validatePath',
