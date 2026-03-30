@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.16.4] - 2026-03-30
+
+### Fixed
+
+- **Reduced false positives in taint analysis:**
+  - Added `path.resolve()` to sanitizer methods (path normalization)
+  - Added safe receiver filtering: `RegExp.exec()`, `db.exec()` no longer flagged as command injection
+  - Added argument position filtering: only dangerous args checked (e.g., arg 0 of `execSync`, not options)
+
+[3.16.4]: https://github.com/cogniumhq/circle-ir/compare/v3.16.3...v3.16.4
+
 ## [3.16.3] - 2026-03-30
 
 ### Fixed
