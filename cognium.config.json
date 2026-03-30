@@ -11,6 +11,7 @@
     "unbounded-collection": false,
     "excessive-allocation": false,
     "redundant-loop-computation": false,
+    "orphan-module": false,
     "dependency-fan-out": { "threshold": 50 }
   },
 
@@ -19,26 +20,6 @@
       "pass": "god-class",
       "file": "src/analysis/constant-propagation/evaluator.ts",
       "reason": "ExpressionEvaluator is a visitor over 20+ AST node types - splitting by node type would scatter related logic"
-    },
-    {
-      "pass": "orphan-module",
-      "file": "src/browser.ts",
-      "reason": "Public entry point for browser consumers - not imported internally by design"
-    },
-    {
-      "pass": "orphan-module",
-      "file": "src/core-lib.ts",
-      "reason": "Public entry point for library consumers - not imported internally by design"
-    },
-    {
-      "pass": "orphan-module",
-      "file": "src/analysis/passes/missing-guard-dom-pass.ts",
-      "reason": "Intentionally removed from pipeline due to FPs with framework auth - kept for circle-ir-ai"
-    },
-    {
-      "pass": "orphan-module",
-      "file": "src/analysis/passes/feature-envy-pass.ts",
-      "reason": "Intentionally removed from pipeline due to FPs with delegation - kept for circle-ir-ai"
     },
     {
       "pass": "dependency-fan-out",

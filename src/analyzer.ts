@@ -742,8 +742,13 @@ export async function analyzeProject(
 
   // 3. Import-graph analysis (circular deps + orphan modules)
   const importGraph = new ImportGraph(projectGraph);
-  const circularFindings = new CircularDependencyPass().run(projectGraph, importGraph);
-  const orphanFindings   = new OrphanModulePass().run(projectGraph, importGraph);
+  const disabledPasses = options.disabledPasses ?? [];
+  const circularFindings = disabledPasses.includes('circular-dependency')
+    ? []
+    : new CircularDependencyPass().run(projectGraph, importGraph);
+  const orphanFindings = disabledPasses.includes('orphan-module')
+    ? []
+    : new OrphanModulePass().run(projectGraph, importGraph);
 
   // Attach project-level findings to the appropriate per-file CircleIR.findings
   for (const finding of [...circularFindings, ...orphanFindings]) {

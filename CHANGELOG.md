@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.16.3] - 2026-03-30
+
+### Fixed
+
+- **Project-level passes now respect disabledPasses** — The `orphan-module` and
+  `circular-dependency` passes in `analyzeProject` now check the `disabledPasses`
+  option before running.
+
+[3.16.3]: https://github.com/cogniumhq/circle-ir/compare/v3.16.2...v3.16.3
+
 ## [3.16.2] - 2026-03-29
 
 ### Fixed
