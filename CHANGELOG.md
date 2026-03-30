@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.16.1] - 2026-03-29
+
+### Changed
+
+- **Cleaned up cognium.config.json** — Removed fragile line-specific suppressions and massive
+  skipPatterns lists. Now uses 8 disabled passes with clear reasoning and 11 architectural
+  suppressions only.
+
+### Fixed
+
+- **stale-doc-ref pass** — Fixed self-detection issue where the pass's own doc comment example
+  `{@link ClassName}` was flagged as a stale reference.
+
+[3.16.1]: https://github.com/cogniumhq/circle-ir/compare/v3.16.0...v3.16.1
+
 ## [3.16.0] - 2026-03-29
 
 ### Added
