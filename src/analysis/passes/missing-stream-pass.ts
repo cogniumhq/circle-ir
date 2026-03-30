@@ -49,6 +49,7 @@ export class MissingStreamPass implements AnalysisPass<MissingStreamResult> {
 
     const file = graph.ir.meta.file;
     const codeLines = code.split('\n');
+    const numCodeLines = codeLines.length;
     const wholeFileReads: MissingStreamResult['wholeFileReads'] = [];
     const reported = new Set<number>();
 
@@ -63,7 +64,8 @@ export class MissingStreamPass implements AnalysisPass<MissingStreamResult> {
           // Skip methods that already use streaming
           if (JS_STREAM_RE.test(methodSrc)) continue;
 
-          for (let i = start - 1; i < end && i < codeLines.length; i++) {
+          const maxLine = Math.min(end, numCodeLines);
+          for (let i = start - 1; i < maxLine; i++) {
             const ln = i + 1;
             if (reported.has(ln)) continue;
             const src = codeLines[i];

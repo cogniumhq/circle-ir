@@ -35,7 +35,8 @@ export class CohesionMetricsPass implements MetricPass {
           .map(f => f.name)
       );
 
-      if (type.methods.length < 2 || instanceFields.size === 0) {
+      const numMethods = type.methods.length;
+      if (numMethods < 2 || instanceFields.size === 0) {
         lcomSum += 0;
         results.push({
           name: 'LCOM',
@@ -69,9 +70,10 @@ export class CohesionMetricsPass implements MetricPass {
       // Count pairs
       let P = 0; // no shared fields
       let Q = 0; // at least one shared field
+      const numMethodFields = methodFields.length;
 
-      for (let i = 0; i < methodFields.length; i++) {
-        for (let j = i + 1; j < methodFields.length; j++) {
+      for (let i = 0; i < numMethodFields; i++) {
+        for (let j = i + 1; j < numMethodFields; j++) {
           const mi = methodFields[i];
           const mj = methodFields[j];
           let shared = false;

@@ -188,11 +188,12 @@ export class VariableShadowingPass implements AnalysisPass<VariableShadowingResu
               .filter(e => e.hasDeclKeyword)
               .sort((a, b) => a.def.line - b.def.line);
 
-            if (declLocals.length < 2) continue;
+            const numDeclLocals = declLocals.length;
+            if (numDeclLocals < 2) continue;
 
             const outerEntry = declLocals[0]!;
 
-            for (let i = 1; i < declLocals.length; i++) {
+            for (let i = 1; i < numDeclLocals; i++) {
               const inner = declLocals[i]!;
               // Skip if the outer block was already closed before the inner
               // declaration — those are sibling scopes, not nested scopes.

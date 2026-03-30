@@ -158,9 +158,18 @@ function detectCollectionFlows(
 
         if (arg.expression) {
           const expr = arg.expression;
-          const collectionMethods = ['getLast', 'getFirst', 'get', 'next', 'poll', 'peek', 'toArray'];
-          for (const method of collectionMethods) {
-            const match = expr.match(new RegExp(`(\\w+)\\.${method}\\(`));
+          // Pre-compiled patterns for collection taint propagation
+          const collectionPatterns = [
+            { method: 'getLast',  re: /(\w+)\.getLast\(/ },
+            { method: 'getFirst', re: /(\w+)\.getFirst\(/ },
+            { method: 'get',      re: /(\w+)\.get\(/ },
+            { method: 'next',     re: /(\w+)\.next\(/ },
+            { method: 'poll',     re: /(\w+)\.poll\(/ },
+            { method: 'peek',     re: /(\w+)\.peek\(/ },
+            { method: 'toArray',  re: /(\w+)\.toArray\(/ },
+          ];
+          for (const { re } of collectionPatterns) {
+            const match = expr.match(re);
             if (match) {
               const collectionVar = match[1];
               const scopedCollection = call.in_method ? `${call.in_method}:${collectionVar}` : collectionVar;

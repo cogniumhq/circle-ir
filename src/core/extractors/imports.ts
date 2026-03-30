@@ -391,8 +391,8 @@ function findRequireCalls(tree: Tree): ImportInfo[] {
  * Extract import information from a Java import_declaration node.
  */
 function extractJavaImportInfo(node: Node): ImportInfo | null {
-  // Check for static import
-  const isStatic = hasStaticModifier(node);
+  // Note: Static imports (import static ...) are parsed the same way.
+  // The hasStaticModifier() helper exists if we need to distinguish them later.
 
   // Get the full import path
   const scopedId = findScopedIdentifier(node);

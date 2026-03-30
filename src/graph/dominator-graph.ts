@@ -153,11 +153,12 @@ function computeIdom(
 
   // Iterate until stable
   let changed = true;
+  const numBlocks = rpoOrder.length;
   while (changed) {
     changed = false;
 
     // Process in RPO order, skip entry (index 0)
-    for (let i = 1; i < rpoOrder.length; i++) {
+    for (let i = 1; i < numBlocks; i++) {
       const b = rpoOrder[i];
       const preds = incoming.get(b) ?? [];
 

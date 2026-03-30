@@ -65,6 +65,125 @@
       "pass": "dependency-fan-out",
       "file": "src/analyzer.ts",
       "reason": "Analyzer is the main orchestrator that imports all passes by design"
+    },
+    {
+      "pass": "serial-await",
+      "file": "src/core/parser.ts",
+      "reason": "Parser.init() must complete before parsing - cannot parallelize"
+    },
+    {
+      "pass": "serial-await",
+      "file": "src/analyzer.ts",
+      "reason": "initAnalyzer() must complete before parse() - cannot parallelize"
+    },
+    {
+      "pass": "unhandled-exception",
+      "file": "src/core/parser.ts",
+      "reason": "Intentional throws for invalid language/initialization state"
+    },
+    {
+      "pass": "unhandled-exception",
+      "file": "src/browser.ts",
+      "reason": "Intentional throws for invalid language/initialization state"
+    },
+    {
+      "pass": "unhandled-exception",
+      "file": "src/graph/analysis-pass.ts",
+      "reason": "Intentional throw for missing required pass result"
+    },
+    {
+      "pass": "excessive-allocation",
+      "file": "src/analysis/metrics/passes/cohesion-metrics-pass.ts",
+      "reason": "Per-type Set allocations are necessary - each type needs fresh field tracking"
+    },
+    {
+      "pass": "excessive-allocation",
+      "file": "src/analysis/metrics/passes/complexity-metrics-pass.ts",
+      "reason": "Per-method Set allocation is necessary for operator counting"
+    },
+    {
+      "pass": "excessive-allocation",
+      "file": "src/analysis/metrics/passes/inheritance-metrics-pass.ts",
+      "reason": "Per-type Set allocation is necessary for inheritance tracking"
+    },
+    {
+      "pass": "excessive-allocation",
+      "file": "src/analysis/metrics/passes/coupling-metrics-pass.ts",
+      "reason": "Per-type Set allocations are necessary for coupling analysis"
+    },
+    {
+      "pass": "excessive-allocation",
+      "file": "src/analysis/passes/sink-filter-pass.ts",
+      "reason": "RegExp must be created dynamically per variable name"
+    },
+    {
+      "pass": "excessive-allocation",
+      "file": "src/graph/dominator-graph.ts",
+      "reason": "Per-block Set is necessary for cycle detection in dominator walk"
+    },
+    {
+      "pass": "excessive-allocation",
+      "file": "src/graph/import-graph.ts",
+      "reason": "Per-file Set allocations are necessary for edge tracking"
+    },
+    {
+      "pass": "redundant-loop-computation",
+      "file": "src/analysis/metrics/passes/coupling-metrics-pass.ts",
+      "line": 73,
+      "reason": "type.methods.length changes each iteration - not loop-invariant"
+    },
+    {
+      "pass": "redundant-loop-computation",
+      "file": "src/analysis/passes/variable-shadowing-pass.ts",
+      "line": 120,
+      "reason": "varEntries.length changes each iteration - not loop-invariant"
+    },
+    {
+      "pass": "redundant-loop-computation",
+      "file": "src/analysis/passes/variable-shadowing-pass.ts",
+      "line": 128,
+      "reason": "variable.length changes each iteration - not loop-invariant"
+    },
+    {
+      "pass": "redundant-loop-computation",
+      "file": "src/analysis/constant-propagation/index.ts",
+      "line": 173,
+      "reason": "normalized.length changes as string is modified in while loop"
+    },
+    {
+      "pass": "redundant-loop-computation",
+      "file": "src/analysis/findings.ts",
+      "line": 71,
+      "reason": "pathResult.hops.length changes each iteration - not loop-invariant"
+    },
+    {
+      "pass": "redundant-loop-computation",
+      "file": "src/resolution/cross-file.ts",
+      "line": 478,
+      "reason": "sinks.length changes each iteration - not loop-invariant"
+    },
+    {
+      "pass": "redundant-loop-computation",
+      "file": "src/resolution/cross-file.ts",
+      "line": 560,
+      "reason": "calls.length changes each iteration - not loop-invariant"
+    },
+    {
+      "pass": "redundant-loop-computation",
+      "file": "src/analysis/metrics/passes/cohesion-metrics-pass.ts",
+      "line": 38,
+      "reason": "type.methods.length changes each iteration over types - not loop-invariant"
+    },
+    {
+      "pass": "redundant-loop-computation",
+      "file": "src/analysis/metrics/passes/cohesion-metrics-pass.ts",
+      "line": 73,
+      "reason": "This IS the hoisting - methodFields is created fresh per type, then length cached here"
+    },
+    {
+      "pass": "unbounded-collection",
+      "file": "src/analysis/passes/sink-filter-pass.ts",
+      "reason": "chars array in parseNumber is bounded by input string length"
     }
   ],
 

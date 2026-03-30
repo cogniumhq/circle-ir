@@ -91,7 +91,8 @@ function computeHash(code: string): string {
   // Simple hash implementation for universal compatibility
   // In production, use SubtleCrypto when available
   let hash = 0;
-  for (let i = 0; i < code.length; i++) {
+  const len = code.length;
+  for (let i = 0; i < len; i++) {
     const char = code.charCodeAt(i);
     hash = ((hash << 5) - hash) + char;
     hash = hash & hash; // Convert to 32-bit integer

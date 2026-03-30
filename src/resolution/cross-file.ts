@@ -259,7 +259,8 @@ export class CrossFileResolver {
     };
 
     const lowerReceiver = receiver.toLowerCase();
-    for (const [abbrev, type] of Object.entries(commonTypes)) {
+    const commonEntries = Object.entries(commonTypes);
+    for (const [abbrev, type] of commonEntries) {
       if (lowerReceiver.includes(abbrev)) {
         return type;
       }
@@ -377,8 +378,9 @@ export class CrossFileResolver {
 
     // Simple heuristic: if parameter is used in return statement, it propagates taint
     // More sophisticated analysis would track actual data flow
+    const numParams = method.parameters.length;
 
-    for (let i = 0; i < method.parameters.length; i++) {
+    for (let i = 0; i < numParams; i++) {
       const param = method.parameters[i];
 
       // Check if param has taint-related annotation

@@ -131,11 +131,12 @@ function findSources(
   // This handles patterns like db.query("SELECT * FROM users WHERE id = " + req.params.id)
   // Get property-based source patterns
   const propertyPatterns = patterns.filter(p => p.property && p.object && p.property_tainted);
+  const hasPropertyPatterns = propertyPatterns.length > 0;
 
   for (const call of calls) {
     for (const arg of call.arguments) {
       if (arg.expression) {
-        const taintCheck = isJavaScriptTaintedArgument(arg.expression, propertyPatterns.length > 0 ? patterns : undefined);
+        const taintCheck = isJavaScriptTaintedArgument(arg.expression, hasPropertyPatterns ? patterns : undefined);
         if (taintCheck.isTainted && taintCheck.sourceType) {
           // Check if we already have a source at this line
           const alreadyExists = sources.some(s => s.line === call.location.line && s.type === taintCheck.sourceType);

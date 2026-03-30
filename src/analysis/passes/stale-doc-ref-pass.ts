@@ -37,7 +37,8 @@ function normalizeRef(raw: string): string {
  */
 function lineOfIndex(code: string, index: number): number {
   let line = 1;
-  for (let i = 0; i < index && i < code.length; i++) {
+  const limit = Math.min(index, code.length);
+  for (let i = 0; i < limit; i++) {
     if (code[i] === '\n') line++;
   }
   return line;

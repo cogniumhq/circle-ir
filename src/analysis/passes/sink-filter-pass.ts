@@ -183,18 +183,19 @@ type Symbols = Map<string, { value: string | number | boolean | null; type: stri
  */
 function evalArithmetic(input: string): number | null {
   let pos = 0;
+  const len = input.length;
 
   function peek(): string { return input[pos] ?? ''; }
   function consume(): string { return input[pos++] ?? ''; }
-  function skipWs(): void { while (pos < input.length && input[pos] === ' ') pos++; }
+  function skipWs(): void { while (pos < len && input[pos] === ' ') pos++; }
 
   function parseNumber(): number | null {
     skipWs();
-    let s = '';
-    if (peek() === '-') { s += consume(); }
-    while (pos < input.length && /[\d.]/.test(input[pos]!)) s += consume();
-    if (s === '' || s === '-') return null;
-    const n = parseFloat(s);
+    const chars: string[] = [];
+    if (peek() === '-') { chars.push(consume()); }
+    while (pos < len && /[\d.]/.test(input[pos]!)) chars.push(consume());
+    if (chars.length === 0 || (chars.length === 1 && chars[0] === '-')) return null;
+    const n = parseFloat(chars.join(''));
     return isFinite(n) ? n : null;
   }
 

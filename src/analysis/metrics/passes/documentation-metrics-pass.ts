@@ -21,7 +21,8 @@ export class DocumentationMetricsPass implements MetricPass {
     // We need to know: for line N, is line N the closing "*/" of a doc comment?
     const docBlockEndLines = new Set<number>();
     let inDocBlock = false;
-    for (let i = 0; i < lines.length; i++) {
+    const numLines = lines.length;
+    for (let i = 0; i < numLines; i++) {
       const trimmed = lines[i].trim();
       if (!inDocBlock && trimmed.startsWith('/**')) {
         inDocBlock = true;

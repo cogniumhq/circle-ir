@@ -57,7 +57,8 @@ function hasDocCommentBefore(lines: string[], startLine: number): boolean {
 /** Check whether the first statement in the method body is a Python docstring. */
 function hasPythonDocstring(lines: string[], method: MethodInfo): boolean {
   const bodyStart = method.start_line; // start_line is the `def` line (1-indexed)
-  for (let i = bodyStart; i < Math.min(bodyStart + 4, lines.length); i++) {
+  const limit = Math.min(bodyStart + 4, lines.length);
+  for (let i = bodyStart; i < limit; i++) {
     const trimmed = lines[i]?.trim() ?? '';
     if (trimmed === '') continue;
     return trimmed.startsWith('"""') || trimmed.startsWith("'''");
