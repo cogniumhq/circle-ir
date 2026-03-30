@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.16.0] - 2026-03-29
+
+### Added
+
+- **PassOptions support** — Analysis passes can now receive configuration options via the
+  `passOptions` parameter in `analyze()`. Pass-specific settings like thresholds are passed
+  through to individual passes, enabling runtime customization without code changes.
+
+- **disabledPasses support** — New `disabledPasses` parameter in `analyze()` allows disabling
+  specific passes by name at runtime. Useful for CI/CD pipelines that need to skip certain
+  checks or for per-project configuration.
+
+- **cognium.config.json** — Added project configuration file with:
+  - Pass-specific options (dependency-fan-out threshold, unbounded-collection skipPatterns)
+  - Disabled passes (infinite-loop, n-plus-one, missing-public-doc, naming-convention)
+  - 27 documented suppressions for false positives
+
+### Changed
+
+- **Code quality improvements** — Fixed all findings from self-analysis:
+  - Removed unused variable in imports.ts
+  - Fixed string-concat-loop in sink-filter-pass.ts (use array.join)
+  - Pre-compiled regex patterns in taint-propagation-pass.ts
+  - Hoisted loop-invariant `.length` computations in 10 files
+
+### Release notes
+
+Version 3.16.0 adds runtime configuration support for analysis passes, enabling per-project
+customization of thresholds, disabled passes, and suppressions. The codebase now passes its
+own analysis with zero findings. Total test count: **1512**.
+
+[3.16.0]: https://github.com/cogniumhq/circle-ir/compare/v3.15.0...v3.16.0
+
 ## [3.15.0] - 2026-03-29
 
 ### Changed
