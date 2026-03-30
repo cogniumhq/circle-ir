@@ -18,6 +18,20 @@ circle-ir is the core TypeScript SAST library for taint analysis and software qu
 - circle-ir: SAST passes + metrics — all deterministic, $0, no LLM
 - circle-ir-ai: LLM-enhanced passes, clustering, semantic understanding — separate package
 
+**Data available for circle-ir-ai:**
+The following raw IR signals are always available for LLM-based analysis:
+- `ir.types` — all classes, methods, fields with line ranges
+- `ir.calls` — all call sites with method names, receivers, arguments
+- `ir.cfg` — full control flow graph (blocks + edges)
+- `ir.dfg` — data flow graph (defs, uses, chains)
+- `ir.taint` — sources, sinks, sanitizers identified by static analysis
+- `result.findings` — all SastFindings from the 40-pass pipeline
+- `result.metrics` — 24 software quality metrics
+
+**Passes removed from default pipeline (signals available for circle-ir-ai):**
+- `MissingGuardDomPass` — dominator-based auth guard detection; false positives with framework-level auth. Use `ir.calls` + `DominatorGraph` to rebuild.
+- `FeatureEnvyPass` — method accesses external objects more than own class; fires on legitimate delegation. Use `ir.calls` to compute call counts.
+
 **Canonical references:**
 - [`docs/PASSES.md`](docs/PASSES.md) — every pass and metric with canonical number, `rule_id`, CWE, SARIF level, and status
 - [`TODO.md`](TODO.md) — phase-based action plan; use pass numbers from PASSES.md when referring to work items
@@ -80,6 +94,21 @@ Each config entry specifies: method/class/annotation, vulnerability type, CWE ma
 - Taint tracking from sources to sinks with sanitizer support
 - Annotation-based source detection (Spring: @RequestParam, @RequestBody; JAX-RS: @QueryParam, @PathParam)
 - Severity levels: critical, high, medium, low
+
+**Runtime configuration (v3.16.0+):**
+The `analyze()` function accepts `passOptions` and `disabledPasses` for per-project customization:
+
+```typescript
+await analyze(code, path, lang, {
+  passOptions: {
+    dependencyFanOut: { threshold: 50 },
+    unboundedCollection: { skipPatterns: ['results', 'cache'] },
+  },
+  disabledPasses: ['naming-convention'],
+});
+```
+
+CLI tools can use `cognium.config.json` for project-level configuration with passes, suppressions, severity filters, and category filters. See `docs/ARCHITECTURE.md` ADR-006 for details.
 
 ## Key Analysis Components
 

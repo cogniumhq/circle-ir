@@ -12,6 +12,7 @@ This document outlines the key architectural decisions that make Circle-IR a hig
    - [ADR-003: LLM-Augmented Analysis](#adr-003-llm-augmented-analysis)
    - [ADR-004: Configuration-Driven Taint Patterns](#adr-004-configuration-driven-taint-patterns)
    - [ADR-005: Multi-Target Build System](#adr-005-multi-target-build-system)
+   - [ADR-006: Runtime Pass Configuration](#adr-006-runtime-pass-configuration)
 4. [Analysis Pipeline](#analysis-pipeline)
 5. [Benchmark Performance](#benchmark-performance)
 
@@ -354,6 +355,71 @@ npm run build:browser   # Browser bundle
 npm run build:core      # Core library (ESM + CJS)
 npm run build:all       # All targets
 ```
+
+---
+
+### ADR-006: Runtime Pass Configuration
+
+**Status:** Implemented (v3.16.0)
+**Impact:** Per-project customization without code changes
+
+#### Context
+Different codebases have different characteristics. A CLI tool may legitimately have high fan-out, while an analyzer orchestrator intentionally imports many passes. Static thresholds cause false positives; disabling passes entirely loses valuable checks.
+
+#### Decision
+Add runtime configuration via `PassOptions` and `disabledPasses`:
+
+```typescript
+// API-level configuration
+await analyze(code, path, lang, {
+  passOptions: {
+    dependencyFanOut: { threshold: 50 },
+    unboundedCollection: { skipPatterns: ['results', 'cache'] },
+  },
+  disabledPasses: ['naming-convention', 'missing-public-doc'],
+});
+```
+
+```json
+// Project-level configuration (cognium.config.json)
+{
+  "passes": {
+    "naming-convention": false,
+    "dependency-fan-out": { "threshold": 50 }
+  },
+  "suppressions": [
+    { "pass": "god-class", "file": "src/analyzer.ts", "reason": "Orchestrator by design" }
+  ]
+}
+```
+
+#### Key Features
+
+**Per-Pass Options:**
+- Thresholds: `dependency-fan-out.threshold`, future passes can add their own
+- Skip patterns: `unbounded-collection.skipPatterns` for legitimate growing collections
+- Regex patterns: `naming-convention.classPattern` for custom naming rules
+
+**Suppressions:**
+- Suppress by pass name (all findings from that pass)
+- Suppress by pass + file (all findings in that file)
+- Suppress by pass + file + line (specific finding)
+- Documented reasons for audit trail
+
+#### Implementation
+
+Passes receive options via `PassContext`:
+
+```typescript
+class DependencyFanOutPass implements AnalysisPass {
+  run(ctx: PassContext): DependencyFanOutResult {
+    const threshold = ctx.passOptions?.dependencyFanOut?.threshold ?? 20;
+    // ... use threshold
+  }
+}
+```
+
+CLI tools (e.g., cognium) load `cognium.config.json` and pass options to `analyze()`.
 
 ---
 

@@ -91,7 +91,34 @@ interface AnalyzerOptions {
     rust?: string;
   };
   taintConfig?: TaintConfig;   // Custom taint configuration
+  passOptions?: PassOptions;   // Per-pass configuration (thresholds, patterns)
+  disabledPasses?: string[];   // Passes to skip (e.g., ['naming-convention'])
 }
+
+interface PassOptions {
+  dependencyFanOut?: {
+    threshold?: number;        // Max imports before flagging (default: 20)
+  };
+  unboundedCollection?: {
+    skipPatterns?: string[];   // Variable names to ignore
+  };
+  namingConvention?: {
+    classPattern?: string;     // Regex for class names
+    methodPattern?: string;    // Regex for method names
+  };
+}
+```
+
+**Example: Configuring passes at runtime**
+
+```typescript
+await initAnalyzer({
+  passOptions: {
+    dependencyFanOut: { threshold: 50 },
+    unboundedCollection: { skipPatterns: ['results', 'items', 'cache'] },
+  },
+  disabledPasses: ['naming-convention', 'missing-public-doc'],
+});
 ```
 
 ### `analyze(code, filePath, language, options?)`
@@ -217,6 +244,8 @@ const rsResult = await analyze(rsCode, 'main.rs', 'rust');
 
 ## Configuration
 
+### Taint Sources/Sinks (YAML)
+
 Custom taint sources, sinks, and sanitizers can be configured via YAML:
 
 ```yaml
@@ -228,6 +257,52 @@ sources:
     severity: high
     tainted_args: [return]
 ```
+
+### Project Configuration (JSON)
+
+Create a `cognium.config.json` in your project root to configure passes and suppressions:
+
+```json
+{
+  "version": "1.0",
+  "include": ["src/**/*.ts"],
+  "exclude": ["**/node_modules/**", "**/dist/**"],
+
+  "passes": {
+    "naming-convention": false,
+    "missing-public-doc": false,
+    "dependency-fan-out": { "threshold": 50 },
+    "unbounded-collection": {
+      "skipPatterns": ["results", "items", "cache"]
+    }
+  },
+
+  "suppressions": [
+    {
+      "pass": "serial-await",
+      "file": "src/init.ts",
+      "reason": "Sequential init required - cannot parallelize"
+    },
+    {
+      "pass": "god-class",
+      "file": "src/analyzer.ts",
+      "reason": "Main orchestrator - high coupling by design"
+    }
+  ],
+
+  "severity": "low",
+  "categories": ["security", "reliability", "performance"]
+}
+```
+
+**Configuration options:**
+
+| Field | Description |
+|-------|-------------|
+| `passes` | Per-pass config: `false` to disable, or `{options}` for thresholds |
+| `suppressions` | Array of `{pass, file?, line?, reason}` to suppress findings |
+| `severity` | Minimum severity to report: `critical`, `high`, `medium`, `low` |
+| `categories` | Categories to include: `security`, `reliability`, `performance`, `maintainability`, `architecture` |
 
 ## SAST Findings & Quality Passes
 
