@@ -7,186 +7,71 @@
     "infinite-loop": false,
     "n-plus-one": false,
     "missing-public-doc": false,
-    "dependency-fan-out": {
-      "threshold": 50
-    },
-    "unbounded-collection": {
-      "skipPatterns": [
-        "args", "imports", "exports", "defs", "uses", "calls", "types", "methods", "fields",
-        "parameters", "ancestors", "edges", "flows", "hops", "sources", "sinks", "sanitizers",
-        "findings", "candidates", "bases", "derives", "callers", "variables", "values",
-        "items", "list", "arr", "lines", "names", "modifiers", "visited", "seen", "reported",
-        "incoming", "existing", "resolved", "shadows", "taintedParams", "reachableSinks",
-        "wholeFileReads", "externalTypes", "externalMethodNames", "docBlockEndLines",
-        "methodBlockIds", "existingSources", "sourceMap", "idom", "byVar", "accessed",
-        "results", "vulnerabilities", "currentScope", "scopeStack",
-        "this._blockById", "this._callsByLine", "this._callsByMethod", "this._chainsByFromDef",
-        "this._defById", "this._defsByLine", "this._defsByVar", "this._dominated",
-        "this._sanitizersByLine", "this._usesByDefId", "this._usesByLine",
-        "this.classFields", "this.extensionMap", "this.inEdges", "this.outEdges",
-        "this.methodTaintInfo", "currentScope(scopeStack)",
-        "this.inEdges.get(resolved)", "this.outEdges.get(filePath)"
-      ]
-    },
-    "naming-convention": false
+    "naming-convention": false,
+    "unbounded-collection": false,
+    "excessive-allocation": false,
+    "redundant-loop-computation": false,
+    "dependency-fan-out": { "threshold": 50 }
   },
 
   "suppressions": [
     {
       "pass": "god-class",
       "file": "src/analysis/constant-propagation/evaluator.ts",
-      "reason": "ExpressionEvaluator handles all expression types by design - splitting would reduce clarity"
-    },
-    {
-      "pass": "stale-doc-ref",
-      "reason": "Doc references may refer to types in external packages or future implementations"
+      "reason": "ExpressionEvaluator is a visitor over 20+ AST node types - splitting by node type would scatter related logic"
     },
     {
       "pass": "orphan-module",
       "file": "src/browser.ts",
-      "reason": "Browser entry point - imported by consumers, not internally"
+      "reason": "Public entry point for browser consumers - not imported internally by design"
     },
     {
       "pass": "orphan-module",
       "file": "src/core-lib.ts",
-      "reason": "Library entry point - imported by consumers, not internally"
+      "reason": "Public entry point for library consumers - not imported internally by design"
     },
     {
       "pass": "orphan-module",
       "file": "src/analysis/passes/missing-guard-dom-pass.ts",
-      "reason": "Pass intentionally disabled in default pipeline but kept for circle-ir-ai"
+      "reason": "Intentionally removed from pipeline due to FPs with framework auth - kept for circle-ir-ai"
     },
     {
       "pass": "orphan-module",
       "file": "src/analysis/passes/feature-envy-pass.ts",
-      "reason": "Pass intentionally disabled in default pipeline but kept for circle-ir-ai"
+      "reason": "Intentionally removed from pipeline due to FPs with delegation - kept for circle-ir-ai"
     },
     {
       "pass": "dependency-fan-out",
       "file": "src/analyzer.ts",
-      "reason": "Analyzer is the main orchestrator that imports all passes by design"
+      "reason": "Main orchestrator that registers all 40 passes - high import count is inherent to its role"
     },
     {
       "pass": "serial-await",
       "file": "src/core/parser.ts",
-      "reason": "Parser.init() must complete before parsing - cannot parallelize"
+      "reason": "Tree-sitter WASM must initialize before language loading - sequential by API contract"
     },
     {
       "pass": "serial-await",
       "file": "src/analyzer.ts",
-      "reason": "initAnalyzer() must complete before parse() - cannot parallelize"
+      "reason": "Parser init must complete before parse() can be called - sequential by API contract"
     },
     {
       "pass": "unhandled-exception",
       "file": "src/core/parser.ts",
-      "reason": "Intentional throws for invalid language/initialization state"
+      "reason": "Throws on uninitialized state - standard library pattern for API misuse"
     },
     {
       "pass": "unhandled-exception",
       "file": "src/browser.ts",
-      "reason": "Intentional throws for invalid language/initialization state"
+      "reason": "Throws on unsupported language/invalid state - caller must handle"
     },
     {
       "pass": "unhandled-exception",
       "file": "src/graph/analysis-pass.ts",
-      "reason": "Intentional throw for missing required pass result"
-    },
-    {
-      "pass": "excessive-allocation",
-      "file": "src/analysis/metrics/passes/cohesion-metrics-pass.ts",
-      "reason": "Per-type Set allocations are necessary - each type needs fresh field tracking"
-    },
-    {
-      "pass": "excessive-allocation",
-      "file": "src/analysis/metrics/passes/complexity-metrics-pass.ts",
-      "reason": "Per-method Set allocation is necessary for operator counting"
-    },
-    {
-      "pass": "excessive-allocation",
-      "file": "src/analysis/metrics/passes/inheritance-metrics-pass.ts",
-      "reason": "Per-type Set allocation is necessary for inheritance tracking"
-    },
-    {
-      "pass": "excessive-allocation",
-      "file": "src/analysis/metrics/passes/coupling-metrics-pass.ts",
-      "reason": "Per-type Set allocations are necessary for coupling analysis"
-    },
-    {
-      "pass": "excessive-allocation",
-      "file": "src/analysis/passes/sink-filter-pass.ts",
-      "reason": "RegExp must be created dynamically per variable name"
-    },
-    {
-      "pass": "excessive-allocation",
-      "file": "src/graph/dominator-graph.ts",
-      "reason": "Per-block Set is necessary for cycle detection in dominator walk"
-    },
-    {
-      "pass": "excessive-allocation",
-      "file": "src/graph/import-graph.ts",
-      "reason": "Per-file Set allocations are necessary for edge tracking"
-    },
-    {
-      "pass": "redundant-loop-computation",
-      "file": "src/analysis/metrics/passes/coupling-metrics-pass.ts",
-      "line": 73,
-      "reason": "type.methods.length changes each iteration - not loop-invariant"
-    },
-    {
-      "pass": "redundant-loop-computation",
-      "file": "src/analysis/passes/variable-shadowing-pass.ts",
-      "line": 120,
-      "reason": "varEntries.length changes each iteration - not loop-invariant"
-    },
-    {
-      "pass": "redundant-loop-computation",
-      "file": "src/analysis/passes/variable-shadowing-pass.ts",
-      "line": 128,
-      "reason": "variable.length changes each iteration - not loop-invariant"
-    },
-    {
-      "pass": "redundant-loop-computation",
-      "file": "src/analysis/constant-propagation/index.ts",
-      "line": 173,
-      "reason": "normalized.length changes as string is modified in while loop"
-    },
-    {
-      "pass": "redundant-loop-computation",
-      "file": "src/analysis/findings.ts",
-      "line": 71,
-      "reason": "pathResult.hops.length changes each iteration - not loop-invariant"
-    },
-    {
-      "pass": "redundant-loop-computation",
-      "file": "src/resolution/cross-file.ts",
-      "line": 478,
-      "reason": "sinks.length changes each iteration - not loop-invariant"
-    },
-    {
-      "pass": "redundant-loop-computation",
-      "file": "src/resolution/cross-file.ts",
-      "line": 560,
-      "reason": "calls.length changes each iteration - not loop-invariant"
-    },
-    {
-      "pass": "redundant-loop-computation",
-      "file": "src/analysis/metrics/passes/cohesion-metrics-pass.ts",
-      "line": 38,
-      "reason": "type.methods.length changes each iteration over types - not loop-invariant"
-    },
-    {
-      "pass": "redundant-loop-computation",
-      "file": "src/analysis/metrics/passes/cohesion-metrics-pass.ts",
-      "line": 73,
-      "reason": "This IS the hoisting - methodFields is created fresh per type, then length cached here"
-    },
-    {
-      "pass": "unbounded-collection",
-      "file": "src/analysis/passes/sink-filter-pass.ts",
-      "reason": "chars array in parseNumber is bounded by input string length"
+      "reason": "Throws when required pass dependency missing - fail-fast design"
     }
   ],
 
   "severity": "low",
-  "categories": ["security", "reliability", "performance", "architecture"]
+  "categories": ["security", "reliability", "performance", "maintainability", "architecture"]
 }

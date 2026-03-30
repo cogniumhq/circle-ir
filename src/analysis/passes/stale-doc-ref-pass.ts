@@ -1,8 +1,8 @@
 /**
  * Pass #33: stale-doc-ref
  *
- * Flags doc comment references ({@link ClassName} and @see ClassName) that
- * point to symbols not found in the file's type declarations or imports.
+ * Flags doc comment references (using link/see JSDoc tags) that point to
+ * symbols not found in the file's type declarations or imports.
  * Stale doc refs cause confusion and erode documentation trustworthiness.
  *
  * Category: maintainability | Severity: low | Level: note | CWE: none
