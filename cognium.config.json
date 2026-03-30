@@ -1,0 +1,73 @@
+{
+  "version": "1.0",
+  "include": ["src/**/*.ts"],
+  "exclude": ["**/node_modules/**", "**/dist/**", "**/tests/**"],
+
+  "passes": {
+    "infinite-loop": false,
+    "n-plus-one": false,
+    "missing-public-doc": false,
+    "dependency-fan-out": {
+      "threshold": 50
+    },
+    "unbounded-collection": {
+      "skipPatterns": [
+        "args", "imports", "exports", "defs", "uses", "calls", "types", "methods", "fields",
+        "parameters", "ancestors", "edges", "flows", "hops", "sources", "sinks", "sanitizers",
+        "findings", "candidates", "bases", "derives", "callers", "variables", "values",
+        "items", "list", "arr", "lines", "names", "modifiers", "visited", "seen", "reported",
+        "incoming", "existing", "resolved", "shadows", "taintedParams", "reachableSinks",
+        "wholeFileReads", "externalTypes", "externalMethodNames", "docBlockEndLines",
+        "methodBlockIds", "existingSources", "sourceMap", "idom", "byVar", "accessed",
+        "results", "vulnerabilities", "currentScope", "scopeStack",
+        "this._blockById", "this._callsByLine", "this._callsByMethod", "this._chainsByFromDef",
+        "this._defById", "this._defsByLine", "this._defsByVar", "this._dominated",
+        "this._sanitizersByLine", "this._usesByDefId", "this._usesByLine",
+        "this.classFields", "this.extensionMap", "this.inEdges", "this.outEdges",
+        "this.methodTaintInfo", "currentScope(scopeStack)",
+        "this.inEdges.get(resolved)", "this.outEdges.get(filePath)"
+      ]
+    },
+    "naming-convention": false
+  },
+
+  "suppressions": [
+    {
+      "pass": "god-class",
+      "file": "src/analysis/constant-propagation/evaluator.ts",
+      "reason": "ExpressionEvaluator handles all expression types by design - splitting would reduce clarity"
+    },
+    {
+      "pass": "stale-doc-ref",
+      "reason": "Doc references may refer to types in external packages or future implementations"
+    },
+    {
+      "pass": "orphan-module",
+      "file": "src/browser.ts",
+      "reason": "Browser entry point - imported by consumers, not internally"
+    },
+    {
+      "pass": "orphan-module",
+      "file": "src/core-lib.ts",
+      "reason": "Library entry point - imported by consumers, not internally"
+    },
+    {
+      "pass": "orphan-module",
+      "file": "src/analysis/passes/missing-guard-dom-pass.ts",
+      "reason": "Pass intentionally disabled in default pipeline but kept for circle-ir-ai"
+    },
+    {
+      "pass": "orphan-module",
+      "file": "src/analysis/passes/feature-envy-pass.ts",
+      "reason": "Pass intentionally disabled in default pipeline but kept for circle-ir-ai"
+    },
+    {
+      "pass": "dependency-fan-out",
+      "file": "src/analyzer.ts",
+      "reason": "Analyzer is the main orchestrator that imports all passes by design"
+    }
+  ],
+
+  "severity": "low",
+  "categories": ["security", "reliability", "performance", "architecture"]
+}

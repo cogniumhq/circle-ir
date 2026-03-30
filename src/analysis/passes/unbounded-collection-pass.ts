@@ -38,6 +38,18 @@ const SHRINK_METHODS = new Set([
 const SIZE_LIMIT_RE =
   /\b(?:size|length|count|len)\s*\(\)?\s*[<>]=?\s*\d|\b(?:MAX|LIMIT|CAPACITY|MAX_SIZE)\b/i;
 
+/**
+ * Per-pass options for UnboundedCollectionPass.
+ * Pass via `AnalyzerOptions.passOptions.unboundedCollection`.
+ */
+export interface UnboundedCollectionOptions {
+  /**
+   * Variable names to skip (not flag as unbounded).
+   * Useful for known-safe collections or intentional accumulation.
+   */
+  skipPatterns?: string[];
+}
+
 export interface UnboundedCollectionResult {
   unboundedCollections: Array<{ receiver: string; line: number; loopStart: number; loopEnd: number }>;
 }
@@ -45,6 +57,12 @@ export interface UnboundedCollectionResult {
 export class UnboundedCollectionPass implements AnalysisPass<UnboundedCollectionResult> {
   readonly name = 'unbounded-collection';
   readonly category = 'performance' as const;
+
+  private readonly skipPatterns: Set<string>;
+
+  constructor(options?: UnboundedCollectionOptions) {
+    this.skipPatterns = new Set(options?.skipPatterns ?? []);
+  }
 
   run(ctx: PassContext): UnboundedCollectionResult {
     const { graph, code, language } = ctx;
@@ -93,6 +111,9 @@ export class UnboundedCollectionPass implements AnalysisPass<UnboundedCollection
       }
 
       for (const [receiver, firstGrowLine] of receiverLines.entries()) {
+        // Skip if receiver matches a skip pattern
+        if (this.skipPatterns.has(receiver)) continue;
+
         // Check for shrink operations on the same receiver in the loop body
         let hasShrink = false;
         for (const call of graph.ir.calls) {

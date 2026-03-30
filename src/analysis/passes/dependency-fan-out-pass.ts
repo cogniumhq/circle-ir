@@ -11,20 +11,37 @@
 import type { AnalysisPass, PassContext } from '../../graph/analysis-pass.js';
 import type { SastFinding } from '../../types/index.js';
 
+/**
+ * Per-pass options for DependencyFanOutPass.
+ * Pass via `AnalyzerOptions.passOptions.dependencyFanOut`.
+ */
+export interface DependencyFanOutOptions {
+  /**
+   * Maximum number of imports before flagging. Default: 20.
+   */
+  threshold?: number;
+}
+
 export interface DependencyFanOutResult {
   importCount: number;
   exceeded: boolean;
 }
 
-const FAN_OUT_THRESHOLD = 20;
+const DEFAULT_THRESHOLD = 20;
 
 export class DependencyFanOutPass implements AnalysisPass<DependencyFanOutResult> {
   readonly name = 'dependency-fan-out';
   readonly category = 'architecture' as const;
 
+  private readonly threshold: number;
+
+  constructor(options?: DependencyFanOutOptions) {
+    this.threshold = options?.threshold ?? DEFAULT_THRESHOLD;
+  }
+
   run(ctx: PassContext): DependencyFanOutResult {
     const importCount = ctx.graph.ir.imports.length;
-    const exceeded    = importCount >= FAN_OUT_THRESHOLD;
+    const exceeded    = importCount >= this.threshold;
 
     if (exceeded) {
       const finding: SastFinding = {
@@ -34,10 +51,10 @@ export class DependencyFanOutPass implements AnalysisPass<DependencyFanOutResult
         rule_id:  'dependency-fan-out',
         severity: 'low',
         level:    'note',
-        message:  `Module imports ${importCount} dependencies (threshold: ${FAN_OUT_THRESHOLD}). High fan-out increases coupling and makes the module harder to test.`,
+        message:  `Module imports ${importCount} dependencies (threshold: ${this.threshold}). High fan-out increases coupling and makes the module harder to test.`,
         file:     ctx.graph.ir.meta.file,
         line:     1,
-        evidence: { importCount, threshold: FAN_OUT_THRESHOLD },
+        evidence: { importCount, threshold: this.threshold },
       };
       ctx.addFinding(finding);
     }

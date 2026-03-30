@@ -98,12 +98,12 @@ import { ResourceLeakPass } from './analysis/passes/resource-leak-pass.js';
 import { VariableShadowingPass } from './analysis/passes/variable-shadowing-pass.js';
 import { LeakedGlobalPass } from './analysis/passes/leaked-global-pass.js';
 import { UnusedVariablePass } from './analysis/passes/unused-variable-pass.js';
-import { DependencyFanOutPass } from './analysis/passes/dependency-fan-out-pass.js';
+import { DependencyFanOutPass, type DependencyFanOutOptions } from './analysis/passes/dependency-fan-out-pass.js';
 import { StaleDocRefPass } from './analysis/passes/stale-doc-ref-pass.js';
 import { InfiniteLoopPass } from './analysis/passes/infinite-loop-pass.js';
 import { DeepInheritancePass } from './analysis/passes/deep-inheritance-pass.js';
 import { RedundantLoopPass } from './analysis/passes/redundant-loop-pass.js';
-import { UnboundedCollectionPass } from './analysis/passes/unbounded-collection-pass.js';
+import { UnboundedCollectionPass, type UnboundedCollectionOptions } from './analysis/passes/unbounded-collection-pass.js';
 import { SerialAwaitPass } from './analysis/passes/serial-await-pass.js';
 import { ReactInlineJsxPass } from './analysis/passes/react-inline-jsx-pass.js';
 import { SwallowedExceptionPass } from './analysis/passes/swallowed-exception-pass.js';
@@ -170,10 +170,25 @@ export interface AnalyzerOptions {
   /**
    * Per-pass configuration options.
    */
-  passOptions?: {
-    /** Options forwarded to NamingConventionPass (#88). */
-    namingConvention?: NamingConventionOptions;
-  };
+  passOptions?: PassOptions;
+
+  /**
+   * Passes to disable entirely. Use pass names (e.g., 'naming-convention').
+   */
+  disabledPasses?: string[];
+}
+
+/**
+ * Per-pass configuration options.
+ * Each key corresponds to a pass name with pass-specific settings.
+ */
+export interface PassOptions {
+  /** Options for NamingConventionPass (#88). */
+  namingConvention?: NamingConventionOptions;
+  /** Options for DependencyFanOutPass (#72). */
+  dependencyFanOut?: DependencyFanOutOptions;
+  /** Options for UnboundedCollectionPass (#31). */
+  unboundedCollection?: UnboundedCollectionOptions;
 }
 
 let initialized = false;
@@ -346,49 +361,58 @@ export async function analyze(
 
   const config = options.taintConfig ?? getDefaultConfig();
 
-  // Run the analysis pipeline
-  const { results, findings } = new AnalysisPipeline()
-    .add(new TaintMatcherPass())
-    .add(new ConstantPropagationPass(tree))
-    .add(new LanguageSourcesPass())
-    .add(new SinkFilterPass())
-    .add(new TaintPropagationPass())
-    .add(new InterproceduralPass())
-    .add(new DeadCodePass())
-    .add(new MissingAwaitPass())
-    .add(new NPlusOnePass())
-    .add(new MissingPublicDocPass())
-    .add(new TodoInProdPass())
-    .add(new StringConcatLoopPass())
-    .add(new SyncIoAsyncPass())
-    .add(new UncheckedReturnPass())
-    .add(new NullDerefPass())
-    .add(new ResourceLeakPass())
-    .add(new VariableShadowingPass())
-    .add(new LeakedGlobalPass())
-    .add(new UnusedVariablePass())
-    .add(new DependencyFanOutPass())
-    .add(new StaleDocRefPass())
-    .add(new InfiniteLoopPass())
-    .add(new DeepInheritancePass())
-    .add(new RedundantLoopPass())
-    .add(new UnboundedCollectionPass())
-    .add(new SerialAwaitPass())
-    .add(new ReactInlineJsxPass())
-    .add(new SwallowedExceptionPass())
-    .add(new BroadCatchPass())
-    .add(new UnhandledExceptionPass())
-    .add(new DoubleClosePass())
-    .add(new UseAfterClosePass())
-    .add(new CleanupVerifyPass())
-    .add(new MissingOverridePass())
-    .add(new UnusedInterfaceMethodPass())
-    .add(new BlockingMainThreadPass())
-    .add(new ExcessiveAllocationPass())
-    .add(new MissingStreamPass())
-    .add(new GodClassPass())
-    .add(new NamingConventionPass(options.passOptions?.namingConvention))
-    .run(graph, code, language, config);
+  // Build the analysis pipeline with configurable pass options
+  const disabledPasses = new Set(options.disabledPasses ?? []);
+  const passOpts = options.passOptions ?? {};
+
+  const pipeline = new AnalysisPipeline();
+
+  // Core taint analysis passes (always enabled)
+  pipeline.add(new TaintMatcherPass());
+  pipeline.add(new ConstantPropagationPass(tree));
+  pipeline.add(new LanguageSourcesPass());
+  pipeline.add(new SinkFilterPass());
+  pipeline.add(new TaintPropagationPass());
+  pipeline.add(new InterproceduralPass());
+
+  // Optional passes — can be disabled via disabledPasses
+  if (!disabledPasses.has('dead-code'))             pipeline.add(new DeadCodePass());
+  if (!disabledPasses.has('missing-await'))         pipeline.add(new MissingAwaitPass());
+  if (!disabledPasses.has('n-plus-one'))            pipeline.add(new NPlusOnePass());
+  if (!disabledPasses.has('missing-public-doc'))    pipeline.add(new MissingPublicDocPass());
+  if (!disabledPasses.has('todo-in-prod'))          pipeline.add(new TodoInProdPass());
+  if (!disabledPasses.has('string-concat-loop'))    pipeline.add(new StringConcatLoopPass());
+  if (!disabledPasses.has('sync-io-async'))         pipeline.add(new SyncIoAsyncPass());
+  if (!disabledPasses.has('unchecked-return'))      pipeline.add(new UncheckedReturnPass());
+  if (!disabledPasses.has('null-deref'))            pipeline.add(new NullDerefPass());
+  if (!disabledPasses.has('resource-leak'))         pipeline.add(new ResourceLeakPass());
+  if (!disabledPasses.has('variable-shadowing'))    pipeline.add(new VariableShadowingPass());
+  if (!disabledPasses.has('leaked-global'))         pipeline.add(new LeakedGlobalPass());
+  if (!disabledPasses.has('unused-variable'))       pipeline.add(new UnusedVariablePass());
+  if (!disabledPasses.has('dependency-fan-out'))    pipeline.add(new DependencyFanOutPass(passOpts.dependencyFanOut));
+  if (!disabledPasses.has('stale-doc-ref'))         pipeline.add(new StaleDocRefPass());
+  if (!disabledPasses.has('infinite-loop'))         pipeline.add(new InfiniteLoopPass());
+  if (!disabledPasses.has('deep-inheritance'))      pipeline.add(new DeepInheritancePass());
+  if (!disabledPasses.has('redundant-loop-computation')) pipeline.add(new RedundantLoopPass());
+  if (!disabledPasses.has('unbounded-collection'))  pipeline.add(new UnboundedCollectionPass(passOpts.unboundedCollection));
+  if (!disabledPasses.has('serial-await'))          pipeline.add(new SerialAwaitPass());
+  if (!disabledPasses.has('react-inline-jsx'))      pipeline.add(new ReactInlineJsxPass());
+  if (!disabledPasses.has('swallowed-exception'))   pipeline.add(new SwallowedExceptionPass());
+  if (!disabledPasses.has('broad-catch'))           pipeline.add(new BroadCatchPass());
+  if (!disabledPasses.has('unhandled-exception'))   pipeline.add(new UnhandledExceptionPass());
+  if (!disabledPasses.has('double-close'))          pipeline.add(new DoubleClosePass());
+  if (!disabledPasses.has('use-after-close'))       pipeline.add(new UseAfterClosePass());
+  if (!disabledPasses.has('cleanup-verify'))        pipeline.add(new CleanupVerifyPass());
+  if (!disabledPasses.has('missing-override'))      pipeline.add(new MissingOverridePass());
+  if (!disabledPasses.has('unused-interface-method')) pipeline.add(new UnusedInterfaceMethodPass());
+  if (!disabledPasses.has('blocking-main-thread'))  pipeline.add(new BlockingMainThreadPass());
+  if (!disabledPasses.has('excessive-allocation'))  pipeline.add(new ExcessiveAllocationPass());
+  if (!disabledPasses.has('missing-stream'))        pipeline.add(new MissingStreamPass());
+  if (!disabledPasses.has('god-class'))             pipeline.add(new GodClassPass());
+  if (!disabledPasses.has('naming-convention'))     pipeline.add(new NamingConventionPass(passOpts.namingConvention));
+
+  // Run the pipeline
+  const { results, findings } = pipeline.run(graph, code, language, config);
 
   const sinkFilter = results.get('sink-filter')    as SinkFilterResult;
   const interProc  = results.get('interprocedural') as InterproceduralPassResult;

@@ -17,6 +17,9 @@ export {
 
 // Per-pass option types (exported so consumers can type passOptions without importing from deep paths)
 export type { NamingConventionOptions } from './analysis/passes/naming-convention-pass.js';
+export type { DependencyFanOutOptions } from './analysis/passes/dependency-fan-out-pass.js';
+export type { UnboundedCollectionOptions } from './analysis/passes/unbounded-collection-pass.js';
+export type { PassOptions } from './analyzer.js';
 
 // Types
 export type {
