@@ -23,6 +23,22 @@ import type { AnalysisPass, PassContext } from '../../graph/analysis-pass.js';
 /** Exit keywords to scan for as a text-level fallback. */
 const EXIT_KEYWORDS = /\b(return|throw|raise|break|System\.exit|process\.exit|os\._exit|exit!\()\b/;
 
+/**
+ * Iterator-based loops that self-terminate when the iterator is exhausted.
+ * These should NOT be flagged as infinite loops.
+ *
+ * - JS/TS: for (const x of arr), for (x in obj)
+ * - Python: for x in iterable:
+ * - Java: for (Type x : collection)
+ * - Rust: for x in iter
+ */
+const ITERATOR_LOOP_PATTERNS = [
+  /\bfor\s*\([^)]*\s+of\s+/,      // JS/TS: for (x of ...)
+  /\bfor\s*\([^)]*\s+in\s+/,      // JS/TS: for (x in ...)
+  /\bfor\s+\w+\s+in\s+/,          // Python/Rust: for x in ...
+  /\bfor\s*\([^)]+\s*:\s*[^)]+\)/, // Java: for (Type x : collection)
+];
+
 export interface InfiniteLoopResult {
   potentialInfiniteLoops: Array<{ headerLine: number; bodyEndLine: number }>;
 }
@@ -115,6 +131,12 @@ export class InfiniteLoopPass implements AnalysisPass<InfiniteLoopResult> {
       }
 
       if (hasKeywordExit) continue;
+
+      // Check if this is an iterator-based loop (for...of, for...in, for-each)
+      // These loops self-terminate when the iterator is exhausted
+      const headerLine = codeLines[header.start_line - 1] ?? '';
+      const isIteratorLoop = ITERATOR_LOOP_PATTERNS.some(pattern => pattern.test(headerLine));
+      if (isIteratorLoop) continue;
 
       reportedHeaders.add(headerId);
       potentialInfiniteLoops.push({ headerLine: header.start_line, bodyEndLine: bodyEnd });

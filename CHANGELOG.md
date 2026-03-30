@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.16.2] - 2026-03-29
+
+### Fixed
+
+- **infinite-loop pass** — No longer flags iterator-based loops (`for...of`, `for...in`,
+  `for-each`, Python/Rust `for x in`) as infinite. These loops self-terminate when the
+  iterator is exhausted.
+
+[3.16.2]: https://github.com/cogniumhq/circle-ir/compare/v3.16.1...v3.16.2
+
 ## [3.16.1] - 2026-03-29
 
 ### Changed
