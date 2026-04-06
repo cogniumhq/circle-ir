@@ -7,10 +7,8 @@
     "infinite-loop": false,
     "n-plus-one": false,
     "missing-public-doc": false,
-    "naming-convention": false,
     "unbounded-collection": false,
     "excessive-allocation": false,
-    "redundant-loop-computation": false,
     "orphan-module": false,
     "dependency-fan-out": { "threshold": 50 }
   },
