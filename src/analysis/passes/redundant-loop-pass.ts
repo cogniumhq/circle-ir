@@ -19,7 +19,10 @@
 import type { AnalysisPass, PassContext } from '../../graph/analysis-pass.js';
 
 // Match:  varName.length  or  varName.size()  or  varName.count()
+// Note: for JS/TS, `.length` is an O(1) property access, not a method call.
+// Use LENGTH_PATTERN_METHODS for JS/TS (excludes `.length`).
 const LENGTH_PATTERN = /\b([A-Za-z_$][A-Za-z0-9_$]*)\s*\.\s*(?:length|size\(\)|count\(\))/g;
+const LENGTH_PATTERN_METHODS = /\b([A-Za-z_$][A-Za-z0-9_$]*)\s*\.\s*(?:size\(\)|count\(\))/g;
 
 // Match:  Object.keys(varName)  Object.values(varName)  Object.entries(varName)
 const OBJECT_STATIC_PATTERN =
@@ -72,9 +75,12 @@ export class RedundantLoopPass implements AnalysisPass<RedundantLoopResult> {
         if (lineText.trim() === '') continue;
 
         // --- .length / .size() / .count() ---
-        LENGTH_PATTERN.lastIndex = 0;
+        // For JS/TS, `.length` is an O(1) property access — only flag method calls
+        const lengthRe = (language === 'javascript' || language === 'typescript')
+          ? LENGTH_PATTERN_METHODS : LENGTH_PATTERN;
+        lengthRe.lastIndex = 0;
         let m: RegExpExecArray | null;
-        while ((m = LENGTH_PATTERN.exec(lineText)) !== null) {
+        while ((m = lengthRe.exec(lineText)) !== null) {
           const varName = m[1];
           if (modifiedVars.has(varName)) continue;
           // Skip if used in a for-loop initialisation line (e.g., for (let i = 0; i < arr.length; i++))

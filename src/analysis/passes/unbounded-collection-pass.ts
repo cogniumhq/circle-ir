@@ -39,6 +39,16 @@ const SIZE_LIMIT_RE =
   /\b(?:size|length|count|len)\s*\(\)?\s*[<>]=?\s*\d|\b(?:MAX|LIMIT|CAPACITY|MAX_SIZE)\b/i;
 
 /**
+ * Regex: bounded iteration patterns.
+ * These loops iterate a finite collection, so grow ops inside them are bounded.
+ *   - JS/TS: `for (const x of items)`, `for (const k in obj)`, `.forEach(`, `.map(`
+ *   - Python: `for x in items:`
+ *   - Java: `for (Type x : items)` (enhanced for)
+ */
+const BOUNDED_LOOP_RE =
+  /\bfor\s*\(.*\b(?:of|in)\b|\bfor\s+\w+\s+in\b|\bfor\s*\([^;]*:[^;]*\)|\.(?:forEach|map|flatMap|filter|reduce)\s*\(/;
+
+/**
  * Per-pass options for UnboundedCollectionPass.
  * Pass via `AnalyzerOptions.passOptions.unboundedCollection`.
  */
@@ -87,6 +97,11 @@ export class UnboundedCollectionPass implements AnalysisPass<UnboundedCollection
 
       // Collect source text for the loop body (for heuristic checks)
       const loopSource = codeLines.slice(start_line - 1, end_line).join('\n');
+
+      // Skip bounded loops: for...of, for...in, forEach, enhanced for (Java)
+      // These iterate a finite collection, so grow ops are bounded by input size.
+      const loopHeader = codeLines[start_line - 1] ?? '';
+      if (BOUNDED_LOOP_RE.test(loopHeader)) continue;
 
       // Find grow calls in the loop body
       const growCalls: Array<{ receiver: string; line: number }> = [];

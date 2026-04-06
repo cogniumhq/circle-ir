@@ -194,7 +194,7 @@ describe('DeepInheritancePass', () => {
 // ---------------------------------------------------------------------------
 
 describe('RedundantLoopPass', () => {
-  it('detects arr.length accessed inside a loop on an unmodified variable', () => {
+  it('skips .length in JS/TS (O(1) property access) but flags .size()', () => {
     const ir = makeIR({
       cfg: {
         blocks: [
@@ -210,6 +210,7 @@ describe('RedundantLoopPass', () => {
       },
       dfg: { defs: [], uses: [], chains: [] },
     });
+    // .length is O(1) in JS/TS — should NOT be flagged
     const code = `
 const arr = [1, 2, 3];
 for (let i = 0; i < 10; i++) {
@@ -218,7 +219,34 @@ for (let i = 0; i < 10; i++) {
 }`;
     const ctx = makeCtx(ir, code, 'typescript');
     const result = new RedundantLoopPass().run(ctx);
+    expect(result.invariants.some(v => v.expression.includes('arr.length'))).toBe(false);
+  });
 
+  it('flags .length in Java (may be a method call)', () => {
+    const javaIR = makeIR({
+      meta: { circle_ir: '3.0', file: 'Test.java', language: 'java', loc: 5, hash: '' },
+      cfg: {
+        blocks: [
+          { id: 0, type: 'entry', start_line: 1, end_line: 1 },
+          { id: 1, type: 'loop', start_line: 2, end_line: 2 },
+          { id: 2, type: 'normal', start_line: 3, end_line: 5 },
+        ],
+        edges: [
+          { from: 0, to: 1, type: 'sequential' },
+          { from: 1, to: 2, type: 'true' },
+          { from: 2, to: 1, type: 'back' },
+        ],
+      },
+      dfg: { defs: [], uses: [], chains: [] },
+    });
+    const javaCode = `
+String[] arr = new String[10];
+for (int i = 0; i < 10; i++) {
+  int n = arr.length;
+  process(n);
+}`;
+    const ctx = makeCtx(javaIR, javaCode, 'java');
+    const result = new RedundantLoopPass().run(ctx);
     expect(result.invariants.some(v => v.expression.includes('arr.length'))).toBe(true);
     expect(ctx.findings.some(f => f.rule_id === 'redundant-loop-computation')).toBe(true);
   });
