@@ -83,7 +83,24 @@ jobs:
       - name: Run trust score
         env:
           LLM_BASE_URL: https://llmproxy.xus.one/v1
-        run: cognium-ai trust ./src
+        run: |
+          cognium-ai trust ./src
+          cognium-ai trust ./src --format badge -o trust-badge.svg
+
+      - name: Run quality score
+        env:
+          LLM_BASE_URL: https://llmproxy.xus.one/v1
+        run: |
+          cognium-ai quality ./src
+          cognium-ai quality ./src --format badge -o quality-badge.svg
+
+      - name: Upload badges
+        uses: actions/upload-artifact@v4
+        with:
+          name: badges
+          path: |
+            trust-badge.svg
+            quality-badge.svg
 
   lint:
     name: Lint and Format Check
