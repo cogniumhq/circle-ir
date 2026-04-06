@@ -36,3 +36,6 @@ npm-debug.log*
 
 # npm pack artifacts
 *.tgz
+
+# Claude Code
+.claude/
