@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.16.6] - 2026-04-07
+
+### Fixed
+
+- **n-plus-one pass** — No longer flags `Map.get()` / `Map.has()` calls inside
+  loops as database queries. Added in-memory collection receiver detection:
+  - Receivers matching `*Index`, `*Map`, `*Lookup`, `*Dict`, `*ById`, `*ByName`,
+    `*ByKey`, `*ByType`, `*ByPath`, `*ByFile`, `*ByLine` are now excluded
+  - Bare-name receivers like `idom`, `seen`, `visited`, `memo`, `cache`,
+    `registry`, `index`, `lookup`, `map`, `set`, `dict` are excluded
+  - The in-memory exclusion takes precedence over DB prefix/suffix matches so
+    ambiguous names (e.g. `dbIndex`) are treated as in-memory collections
+  - Removed `Index` from the DB receiver suffix list — it was the main source
+    of false positives on graph algorithms (`rpoIndex.get()` in dominator
+    computation)
+
+[3.16.6]: https://github.com/cogniumhq/circle-ir/compare/v3.16.5...v3.16.6
+
+## [3.16.5] - 2026-04-06
+
+### Fixed
+
+- **naming-convention pass** — Skip synthetic names like `<module>` and
+  `<anonymous>` that are injected by the IR extractors but are not real
+  identifiers in source code.
+- **redundant-loop-computation pass** — No longer flags `.length` property
+  reads in JavaScript/TypeScript loops. Array/string `.length` is an O(1)
+  property access, not a function call.
+- **unhandled-exception pass** — Added source-level `try`/`catch` detection
+  as a fallback when the CFG builder misses exception edges. Reduces false
+  positives on throws that are actually wrapped in try/catch blocks.
+- **unbounded-collection pass** — Skip bounded loops (`for...of`, `for...in`,
+  `forEach`) which iterate over a finite input and cannot grow unboundedly.
+
+[3.16.5]: https://github.com/cogniumhq/circle-ir/compare/v3.16.4...v3.16.5
+
 ## [3.16.4] - 2026-03-30
 
 ### Fixed
