@@ -63,12 +63,41 @@ const MEDIUM_CONFIDENCE_DB_METHODS: ReadonlySet<string> = new Set([
  */
 const DB_OR_HTTP_RECEIVER_PREFIX = /^(db|conn|connection|pool|client|repo|repository|orm|em|entityManager|sequelize|mongoose|prisma|axios|http|https|api|svc|service|dao|store|cache|gql|graphql|mongo|redis|sql|pg|mysql|sqlite|dynamo|cosmos|elastic|es|solr|neo4j|cassandra|couchbase|firestore|supabase|drizzle|knex|typeorm|mikro)/i;
 
-const DB_OR_HTTP_RECEIVER_SUFFIX = /(?:Repository|Repo|Dao|DataSource|DbContext|Client|Service|Store|Cache|Gateway|Adapter|Provider|Manager|Handler|Proxy|Facade|Connection|Pool|Session|Template|Mapper|Access|Query|Command|Storage|Bucket|Table|Collection|Index)$/;
+const DB_OR_HTTP_RECEIVER_SUFFIX = /(?:Repository|Repo|Dao|DataSource|DbContext|Client|Service|Store|Cache|Gateway|Adapter|Provider|Manager|Handler|Proxy|Facade|Connection|Pool|Session|Template|Mapper|Access|Query|Command|Storage|Bucket|Table|Collection)$/;
+
+/**
+ * Receiver name patterns that indicate a built-in in-memory collection
+ * (`Map`, `WeakMap`, plain object used as a hash) rather than a DB/HTTP
+ * client. These are common in algorithm implementations where `.get()`,
+ * `.has()`, `.set()` are called inside loops without any I/O.
+ *
+ * Examples: `rpoIndex`, `nodeMap`, `idomLookup`, `byIdDict`, `nodesById`.
+ *
+ * Note: `Set`, `Cache`, `Store` are intentionally NOT here because they may
+ * legitimately refer to remote stores (`redisCache`, `sessionStore`,
+ * `resultSet`).
+ */
+const IN_MEMORY_COLLECTION_RECEIVER = /(?:Index|Map|Lookup|Dict|ById|ByName|ByKey|ByType|ByPath|ByFile|ByLine)$/;
+
+/**
+ * Names of built-in in-memory collections commonly used as bare-word
+ * receivers in algorithm code (e.g. `idom.get(node)`, `seen.has(x)`).
+ */
+const IN_MEMORY_COLLECTION_NAMES: ReadonlySet<string> = new Set([
+  'map', 'set', 'dict', 'lookup', 'index', 'cache', 'seen', 'visited',
+  'idom', 'memo', 'registry',
+]);
 
 /**
  * Check if a receiver name indicates a DB or HTTP client.
+ *
+ * Returns false for in-memory collection patterns (`*Index`, `*Map`, etc.)
+ * even if they would otherwise match a DB suffix, to avoid false positives
+ * on JavaScript `Map` / `Set` `.get()` calls inside loops.
  */
 function isDbOrHttpReceiver(receiver: string): boolean {
+  if (IN_MEMORY_COLLECTION_RECEIVER.test(receiver)) return false;
+  if (IN_MEMORY_COLLECTION_NAMES.has(receiver.toLowerCase())) return false;
   return DB_OR_HTTP_RECEIVER_PREFIX.test(receiver) || DB_OR_HTTP_RECEIVER_SUFFIX.test(receiver);
 }
 

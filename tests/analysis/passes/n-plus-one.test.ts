@@ -383,4 +383,94 @@ describe('NPlusOnePass', () => {
     const result = new NPlusOnePass().run(ctx);
     expect(result.loopDbCalls).toHaveLength(1);
   });
+
+  // ---------------------------------------------------------------------------
+  // Regression: in-memory collection receivers must NOT be flagged.
+  // JavaScript `Map.get()` / `Map.has()` inside loops is normal algorithm code,
+  // not a DB query.
+  // ---------------------------------------------------------------------------
+
+  it('does not flag Map.get() with *Index receiver inside a loop', () => {
+    // Regression: `rpoIndex.get(node)` in graph algorithms (e.g. dominator
+    // computation) was being flagged because `Index` was in the DB suffix list.
+    const cfg = loopCfg();
+    const calls = [makeCall('get', 3, 'rpoIndex')];
+    const ir = makeIR(calls, cfg);
+    const { ctx, findings } = makeCtx(ir);
+    const result = new NPlusOnePass().run(ctx);
+    expect(result.loopDbCalls).toHaveLength(0);
+    expect(findings).toHaveLength(0);
+  });
+
+  it('does not flag Map.get() with *Map receiver inside a loop', () => {
+    const cfg = loopCfg();
+    const calls = [makeCall('get', 3, 'nodeMap')];
+    const ir = makeIR(calls, cfg);
+    const { ctx, findings } = makeCtx(ir);
+    const result = new NPlusOnePass().run(ctx);
+    expect(result.loopDbCalls).toHaveLength(0);
+    expect(findings).toHaveLength(0);
+  });
+
+  it('does not flag Map.get() with *Lookup receiver inside a loop', () => {
+    const cfg = loopCfg();
+    const calls = [makeCall('get', 3, 'parentLookup')];
+    const ir = makeIR(calls, cfg);
+    const { ctx, findings } = makeCtx(ir);
+    const result = new NPlusOnePass().run(ctx);
+    expect(result.loopDbCalls).toHaveLength(0);
+  });
+
+  it('does not flag Map.get() with *ById receiver inside a loop', () => {
+    const cfg = loopCfg();
+    const calls = [makeCall('get', 3, 'usersById')];
+    const ir = makeIR(calls, cfg);
+    const { ctx, findings } = makeCtx(ir);
+    const result = new NPlusOnePass().run(ctx);
+    expect(result.loopDbCalls).toHaveLength(0);
+  });
+
+  it('does not flag bare-name in-memory collections (idom, seen, visited)', () => {
+    const cfg = loopCfg();
+    const calls = [
+      makeCall('get', 2, 'idom'),
+      makeCall('get', 3, 'seen'),
+      makeCall('get', 4, 'visited'),
+      makeCall('get', 5, 'memo'),
+    ];
+    const ir = makeIR(calls, cfg);
+    const { ctx, findings } = makeCtx(ir);
+    const result = new NPlusOnePass().run(ctx);
+    expect(result.loopDbCalls).toHaveLength(0);
+    expect(findings).toHaveLength(0);
+  });
+
+  it('in-memory exclusion takes precedence over DB prefix (dbIndex is ambiguous)', () => {
+    // `dbIndex` could be a JS Map keyed by db name OR a DB index. The
+    // in-memory exclusion takes precedence to favour fewer false positives
+    // in algorithm code. Real DB code uses clearer names (`db`, `dbClient`).
+    const cfg = loopCfg();
+    const calls = [makeCall('query', 3, 'dbIndex')];
+    const ir = makeIR(calls, cfg);
+    const { ctx, findings } = makeCtx(ir);
+    const result = new NPlusOnePass().run(ctx);
+    expect(result.loopDbCalls).toHaveLength(0);
+    expect(findings).toHaveLength(0);
+  });
+
+  it('still flags clean DB receivers after the in-memory exclusion is added', () => {
+    // Sanity check: ordinary DB receivers without in-memory suffixes still
+    // get flagged (regression check that we did not break the prefix path).
+    const cfg = loopCfg();
+    const calls = [
+      makeCall('query', 2, 'db'),
+      makeCall('get', 3, 'axios'),
+      makeCall('find', 4, 'userRepository'),
+    ];
+    const ir = makeIR(calls, cfg);
+    const { ctx, findings } = makeCtx(ir);
+    const result = new NPlusOnePass().run(ctx);
+    expect(result.loopDbCalls).toHaveLength(3);
+    expect(findings).toHaveLength(3);
+  });
 });
