@@ -174,7 +174,7 @@ Passes still build separate graph structures independently.
 - [ ] **AST integration** — Tree-sitter AST nodes accessible through CodeGraph (currently passed separately to constant propagation)
 - [ ] **Unified query API** — single entry point for all graph queries instead of `graph.ir.cfg` + `new DominatorGraph(cfg)` + `new ExceptionFlowGraph(cfg, ...)` etc.
 
-**Why it's deferred:** All 36+ passes work fine with current structures. ~1,500 LOC refactor for cleaner internals but no new analysis capabilities. Would benefit circle-ir-ai (LLM passes need a unified graph view).
+**Why it's deferred:** All 36+ passes work fine with current structures. ~1,500 LOC refactor for cleaner internals but no new analysis capabilities. Purely a developer-ergonomics improvement for circle-ir contributors.
 
 ---
 
