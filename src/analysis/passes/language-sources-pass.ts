@@ -31,6 +31,8 @@ const JS_DOM_XSS_SINKS = [
   { pattern: /\.insertAdjacentHTML\s*\(/, type: 'xss' as const, cwe: 'CWE-79', severity: 'critical' as const },
   { pattern: /\.src\s*=/, type: 'xss' as const, cwe: 'CWE-79', severity: 'high' as const },
   { pattern: /\.href\s*=/, type: 'xss' as const, cwe: 'CWE-79', severity: 'high' as const },
+  { pattern: /\.cssText\s*=/, type: 'xss' as const, cwe: 'CWE-79', severity: 'medium' as const },
+  { pattern: /style\.textContent\s*=/, type: 'xss' as const, cwe: 'CWE-79', severity: 'high' as const },
 ];
 
 export const JS_TAINTED_PATTERNS = [
@@ -518,6 +520,8 @@ function findJavaScriptDOMSinks(sourceCode: string, language: string): Array<{
         else if (line.includes('.insertAdjacentHTML')) method = 'insertAdjacentHTML';
         else if (line.includes('.src')) method = 'src';
         else if (line.includes('.href')) method = 'href';
+        else if (line.includes('.cssText')) method = 'cssText';
+        else if (line.includes('style.textContent')) method = 'textContent';
 
         const alreadyExists = sinks.some(s => s.line === lineNumber && s.cwe === cwe);
         if (!alreadyExists) {

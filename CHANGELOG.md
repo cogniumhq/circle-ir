@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.18.5] - 2026-04-15
+
+### Fixed
+
+- **Property sink matching**: Added `cssText` and `style.textContent` to `JS_DOM_XSS_SINKS` regex table in `LanguageSourcesPass`, enabling runtime detection of CSS injection and dynamic stylesheet XSS
+- **Rust builder pattern matching**: `receiverMightBeClass()` now recognizes `Response::builder().header()` by mapping `builder()` return type and extracting the type before `::` in scoped calls
+
+[3.18.5]: https://github.com/cogniumhq/circle-ir/compare/v3.18.4...v3.18.5
+
 ## [3.18.4] - 2026-04-15
 
 ### Added

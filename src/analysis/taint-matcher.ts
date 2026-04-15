@@ -595,9 +595,21 @@ function receiverMightBeClass(receiver: string, className: string): boolean {
         'createStatement': ['Statement'],
         'prepareStatement': ['PreparedStatement'],
         'getRuntime': ['Runtime'],
+        'builder': ['Response', 'ResponseBuilder', 'HttpResponseBuilder'],
       };
       const expectedTypes = returnTypeMappings[methodName];
       if (Array.isArray(expectedTypes) && expectedTypes.includes(className)) {
+        return true;
+      }
+    }
+  }
+
+  // Handle Rust scoped calls like "Response::builder()" — extract type before ::
+  if (receiver.includes('::') && receiver.endsWith(')')) {
+    const scopedMatch = receiver.match(/^(\w+)::\w+\(.*\)$/);
+    if (scopedMatch) {
+      const typeName = scopedMatch[1];
+      if (typeName === className || typeName.toLowerCase() === lowerClass) {
         return true;
       }
     }
