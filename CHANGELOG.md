@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.17.3] - 2026-04-14
+
+### Fixed
+
+- **Export `package.json` subpath** (#11 follow-up): Added `"./package.json": "./package.json"` to the `exports` map so that `require.resolve('circle-ir/package.json')` works under strict Node.js module resolution. Required by consumers (cognium, circle-ir-ai) that use `createRequire` to locate the `dist/wasm/` directory.
+
+[3.17.3]: https://github.com/cogniumhq/circle-ir/compare/v3.17.2...v3.17.3
+
 ## [3.17.2] - 2026-04-14
 
 ### Fixed
