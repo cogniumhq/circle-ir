@@ -1020,6 +1020,37 @@ export const DEFAULT_SINKS: SinkPattern[] = [
   { method: 'processRequest', class: 'Broker', type: 'code_injection', cwe: 'CWE-94', severity: 'critical', arg_positions: [0] },
   // DolphinScheduler
   { method: 'execute', class: 'TaskExecuteThread', type: 'code_injection', cwe: 'CWE-94', severity: 'critical', arg_positions: [0] },
+  // Apache Commons JEXL (JEXL expression injection)
+  { method: 'createExpression', class: 'JexlEngine', type: 'code_injection', cwe: 'CWE-94', severity: 'critical', arg_positions: [0] },
+  { method: 'createScript', class: 'JexlEngine', type: 'code_injection', cwe: 'CWE-94', severity: 'critical', arg_positions: [0] },
+  { method: 'evaluate', class: 'JexlExpression', type: 'code_injection', cwe: 'CWE-94', severity: 'critical', arg_positions: [] },
+  { method: 'execute', class: 'JexlScript', type: 'code_injection', cwe: 'CWE-94', severity: 'critical', arg_positions: [] },
+  // Janino expression evaluator (Calcite/Flink/Drill)
+  { method: 'createFastEvaluator', class: 'ExpressionEvaluator', type: 'code_injection', cwe: 'CWE-94', severity: 'critical', arg_positions: [0] },
+  { method: 'cook', class: 'ExpressionEvaluator', type: 'code_injection', cwe: 'CWE-94', severity: 'critical', arg_positions: [0] },
+  { method: 'cook', class: 'ScriptEvaluator', type: 'code_injection', cwe: 'CWE-94', severity: 'critical', arg_positions: [0] },
+  { method: 'cook', class: 'ClassBodyEvaluator', type: 'code_injection', cwe: 'CWE-94', severity: 'critical', arg_positions: [0] },
+  { method: 'cook', class: 'SimpleCompiler', type: 'code_injection', cwe: 'CWE-94', severity: 'critical', arg_positions: [0] },
+  // Apache Camel Simple language (CVE-2018-8041 and similar)
+  { method: 'createExpression', class: 'SimpleLanguage', type: 'code_injection', cwe: 'CWE-94', severity: 'critical', arg_positions: [0] },
+  { method: 'createPredicate', class: 'SimpleLanguage', type: 'code_injection', cwe: 'CWE-94', severity: 'critical', arg_positions: [0] },
+  // Thymeleaf StandardExpression (CVE-2023-38286 and similar)
+  { method: 'parseExpression', class: 'StandardExpressionParser', type: 'code_injection', cwe: 'CWE-94', severity: 'critical', arg_positions: [1] },
+  { method: 'getValue', class: 'StandardExpression', type: 'code_injection', cwe: 'CWE-94', severity: 'critical', arg_positions: [] },
+  // FreeMarker direct template construction (CVE-2022-26336 and similar)
+  { method: 'Template', class: 'Template', type: 'code_injection', cwe: 'CWE-94', severity: 'critical', arg_positions: [1] },  // new Template(name, tainted)
+  { method: 'getTemplate', class: 'Configuration', type: 'code_injection', cwe: 'CWE-94', severity: 'high', arg_positions: [0] },
+  // Jinjava (Java Jinja template engine)
+  { method: 'render', class: 'Jinjava', type: 'code_injection', cwe: 'CWE-94', severity: 'high', arg_positions: [0] },
+  { method: 'renderForResult', class: 'Jinjava', type: 'code_injection', cwe: 'CWE-94', severity: 'high', arg_positions: [0] },
+  // Spring Cloud Function RoutingFunction (CVE-2022-22963)
+  { method: 'getRequestedBeanName', class: 'RoutingFunction', type: 'code_injection', cwe: 'CWE-94', severity: 'critical', arg_positions: [] },
+  // Kotlin reflection (RCE via reflective construction)
+  { method: 'createInstance', class: 'KClass', type: 'code_injection', cwe: 'CWE-94', severity: 'high', arg_positions: [] },
+  { method: 'callBy', class: 'KFunction', type: 'code_injection', cwe: 'CWE-94', severity: 'high', arg_positions: [0] },
+  // Struts 2 deep injection (CVE-2017-5638 and descendants)
+  { method: 'translateVariables', class: 'TextParseUtil', type: 'code_injection', cwe: 'CWE-94', severity: 'critical', arg_positions: [0] },
+  { method: 'evaluate', class: 'StrutsResultSupport', type: 'code_injection', cwe: 'CWE-94', severity: 'critical', arg_positions: [0] },
 
   // Deserialization (CWE-502)
   { method: 'readObject', type: 'deserialization', cwe: 'CWE-502', severity: 'critical', arg_positions: [] },
@@ -1605,12 +1636,24 @@ export const DEFAULT_SANITIZERS: SanitizerPattern[] = [
   { method: 'encodeForHTML', removes: ['xss'] },
   { method: 'escapeXml', removes: ['xss'] },
   { method: 'htmlEscape', removes: ['xss'] },
+  { method: 'escapeHtml4', removes: ['xss'] },  // Apache Commons StringEscapeUtils
+  { method: 'escapeHtml3', removes: ['xss'] },  // Apache Commons StringEscapeUtils
+  { method: 'htmlSpecialChars', removes: ['xss'] },  // PHP-style / common wrapper
+  { method: 'forHtml', class: 'Encode', removes: ['xss'] },  // OWASP Java Encoder
+  { method: 'forHtmlContent', class: 'Encode', removes: ['xss'] },
+  { method: 'forHtmlAttribute', class: 'Encode', removes: ['xss'] },
+  { method: 'forJavaScript', class: 'Encode', removes: ['xss'] },
   { method: 'encode_text', removes: ['xss'] },  // Rust html_escape crate
   { method: 'encode_safe', removes: ['xss'] },  // Rust html_escape crate
   { method: 'render', class: 'Template', removes: ['xss'] },  // Rust askama auto-escapes
   { method: 'encodeForJavaScript', removes: ['xss'] },
   { method: 'encodeForCSS', removes: ['xss'] },
   { method: 'encodeForURL', removes: ['xss', 'ssrf'] },
+  // URL encoding wrapper aliases (common patterns in benchmarks and real-world code)
+  { method: 'encodeURL', removes: ['xss', 'ssrf'] },
+  { method: 'urlEncode', removes: ['xss', 'ssrf'] },
+  { method: 'escapeUrl', removes: ['xss', 'ssrf'] },
+  { method: 'escapeURL', removes: ['xss', 'ssrf'] },
 
   // Path Traversal
   { method: 'normalize', class: 'Path', removes: ['path_traversal'] },

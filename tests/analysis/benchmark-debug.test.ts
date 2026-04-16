@@ -260,4 +260,170 @@ async fn greet_warp(name: String) -> impl warp::Reply {
     })), null, 2));
     expect(result.taint.sinks.some(s => s.method === 'html')).toBe(true);
   });
+
+  // -------------------------------------------------------------------------
+  // v3.18.8 additions: server-side XSS sanitizers (ServersideEscape.java)
+  // -------------------------------------------------------------------------
+
+  it('serverside_escape_url: encodeURL wrapper should sanitize XSS', async () => {
+    const code = `
+import java.net.URLEncoder;
+
+public class ServersideEscape {
+  private String encodeURL(String value) {
+    try {
+      return URLEncoder.encode(value, "UTF-8");
+    } catch (Exception e) { return null; }
+  }
+
+  public void doGet(javax.servlet.http.HttpServletRequest request, javax.servlet.http.HttpServletResponse response) throws java.io.IOException {
+    String echoedParam = request.getParameter("q");
+    response.getWriter().println(encodeURL(echoedParam));
+  }
+}
+`;
+    const result = await analyze(code, 'ServersideEscape.java', 'java');
+    const encodeUrlSanitizers = result.taint.sanitizers.filter(s => s.method.includes('encodeURL'));
+    expect(encodeUrlSanitizers.length).toBeGreaterThan(0);
+  });
+
+  it('serverside_escape_html: htmlEscape wrapper should sanitize XSS', async () => {
+    const code = `
+public class ServersideEscape {
+  private String htmlEscape(String value) {
+    return value.replace("<", "&lt;").replace("&", "&amp;").replace(">", "&gt;");
+  }
+
+  public void doGet(javax.servlet.http.HttpServletRequest request, javax.servlet.http.HttpServletResponse response) throws java.io.IOException {
+    String echoedParam = request.getParameter("q");
+    response.getWriter().println(htmlEscape(echoedParam));
+  }
+}
+`;
+    const result = await analyze(code, 'ServersideEscape.java', 'java');
+    const htmlEscapeSanitizers = result.taint.sanitizers.filter(s => s.method.includes('htmlEscape'));
+    expect(htmlEscapeSanitizers.length).toBeGreaterThan(0);
+  });
+
+  it('owasp_encoder: Encode.forHtml should sanitize XSS', async () => {
+    const code = `
+import org.owasp.encoder.Encode;
+
+public class Safe {
+  public void doGet(javax.servlet.http.HttpServletRequest request, javax.servlet.http.HttpServletResponse response) throws java.io.IOException {
+    String userInput = request.getParameter("q");
+    response.getWriter().println(Encode.forHtml(userInput));
+  }
+}
+`;
+    const result = await analyze(code, 'Safe.java', 'java');
+    const encodeSanitizers = result.taint.sanitizers.filter(s => s.method.includes('forHtml'));
+    expect(encodeSanitizers.length).toBeGreaterThan(0);
+  });
+
+  // -------------------------------------------------------------------------
+  // v3.18.8 additions: DOM propagation (DOMPropagation benchmark)
+  // -------------------------------------------------------------------------
+
+  it('dom_propagation_window_status: window.status should be a taint conduit', async () => {
+    const code = `
+var payload = location.hash.substr(1);
+window.status = payload;
+var retrieved_payload = window.status;
+eval(retrieved_payload);
+`;
+    const result = await analyze(code, 'dompropagation.js', 'javascript');
+    console.log('SOURCES:', JSON.stringify(result.taint.sources, null, 2));
+    console.log('SINKS:', JSON.stringify(result.taint.sinks, null, 2));
+    // At least one source should be from window.status or location.hash
+    expect(result.taint.sources.length).toBeGreaterThan(0);
+    // There should be an eval sink
+    expect(result.taint.sinks.some(s => s.method === 'eval')).toBe(true);
+  });
+
+  it('dom_propagation_document_title: document.title should be a taint conduit', async () => {
+    const code = `
+document.title = location.hash;
+var t = document.title;
+document.body.innerHTML = t;
+`;
+    const result = await analyze(code, 'title.js', 'javascript');
+    expect(result.taint.sources.some(s =>
+      s.location?.includes('document.title') || s.location?.includes('location.hash')
+    )).toBe(true);
+  });
+
+  it('dom_propagation_localstorage: localStorage.getItem should be a source', async () => {
+    const code = `
+var data = localStorage.getItem('key');
+document.body.innerHTML = data;
+`;
+    const result = await analyze(code, 'ls.js', 'javascript');
+    expect(result.taint.sources.length).toBeGreaterThan(0);
+  });
+
+  // -------------------------------------------------------------------------
+  // v3.18.8 additions: new CWE-094 sinks
+  // -------------------------------------------------------------------------
+
+  it('cwe094_jexl: JexlEngine.createExpression should be a sink', async () => {
+    const code = `
+import org.apache.commons.jexl3.JexlEngine;
+
+public class Vuln {
+  public void handle(javax.servlet.http.HttpServletRequest request, JexlEngine engine) {
+    String expr = request.getParameter("expr");
+    engine.createExpression(expr);
+  }
+}
+`;
+    const result = await analyze(code, 'Vuln.java', 'java');
+    expect(result.taint.sinks.some(s => s.method === 'createExpression' && s.type === 'code_injection')).toBe(true);
+  });
+
+  it('cwe094_janino: Janino ExpressionEvaluator.cook should be a sink', async () => {
+    const code = `
+import org.codehaus.janino.ExpressionEvaluator;
+
+public class Vuln {
+  public void handle(javax.servlet.http.HttpServletRequest request, ExpressionEvaluator ev) throws Exception {
+    String expr = request.getParameter("expr");
+    ev.cook(expr);
+  }
+}
+`;
+    const result = await analyze(code, 'Vuln.java', 'java');
+    expect(result.taint.sinks.some(s => s.method === 'cook' && s.type === 'code_injection')).toBe(true);
+  });
+
+  it('cwe094_thymeleaf: StandardExpressionParser.parseExpression should be a sink', async () => {
+    const code = `
+import org.thymeleaf.standard.expression.StandardExpressionParser;
+import org.thymeleaf.context.IExpressionContext;
+
+public class Vuln {
+  public void handle(javax.servlet.http.HttpServletRequest request, StandardExpressionParser parser, IExpressionContext ctx) {
+    String expr = request.getParameter("expr");
+    parser.parseExpression(ctx, expr);
+  }
+}
+`;
+    const result = await analyze(code, 'Vuln.java', 'java');
+    expect(result.taint.sinks.some(s => s.method === 'parseExpression' && s.type === 'code_injection')).toBe(true);
+  });
+
+  it('cwe094_camel_simple: SimpleLanguage.createExpression should be a sink', async () => {
+    const code = `
+import org.apache.camel.language.simple.SimpleLanguage;
+
+public class Vuln {
+  public void handle(javax.servlet.http.HttpServletRequest request, SimpleLanguage lang) {
+    String expr = request.getParameter("expr");
+    lang.createExpression(expr);
+  }
+}
+`;
+    const result = await analyze(code, 'Vuln.java', 'java');
+    expect(result.taint.sinks.some(s => s.method === 'createExpression' && s.type === 'code_injection')).toBe(true);
+  });
 });

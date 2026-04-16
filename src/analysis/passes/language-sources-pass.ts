@@ -70,6 +70,13 @@ export const JS_TAINTED_PATTERNS = [
   { pattern: /\bdocument\.URL\b/, type: 'http_path' as const },
   { pattern: /\bdocument\.documentURI\b/, type: 'http_path' as const },
   { pattern: /\blocation\.pathname\b/, type: 'http_path' as const },
+  // DOM propagation globals - deprecated/obscure but still exploitable as taint conduits.
+  // Writing attacker-controlled data here and reading it back preserves taint (DOMPropagation pattern).
+  { pattern: /\bwindow\.status\b/, type: 'dom_input' as const },
+  { pattern: /\bdocument\.title\b/, type: 'dom_input' as const },
+  { pattern: /\bhistory\.state\b/, type: 'dom_input' as const },
+  { pattern: /\blocalStorage\.getItem\b/, type: 'dom_input' as const },
+  { pattern: /\bsessionStorage\.getItem\b/, type: 'dom_input' as const },
 ];
 
 const PYTHON_TAINTED_PATTERNS = [

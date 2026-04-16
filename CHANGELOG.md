@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.18.8] - 2026-04-16
+
+### Added
+
+- **Server-side XSS sanitizer aliases**: `encodeURL`, `urlEncode`, `escapeUrl`, `escapeURL` recognized as XSS/SSRF sanitizers (matches OWASP Firing Range `ServersideEscape` pattern)
+- **Apache Commons `escapeHtml3`/`escapeHtml4`**: Added as XSS sanitizers
+- **OWASP Java Encoder methods**: `Encode.forHtml`, `Encode.forHtmlContent`, `Encode.forHtmlAttribute`, `Encode.forJavaScript` recognized as XSS sanitizers
+- **`htmlSpecialChars` wrapper**: Common PHP-style wrapper name added as XSS sanitizer
+- **DOM taint-conduit globals**: `window.status`, `document.title`, `history.state`, `localStorage.getItem`, `sessionStorage.getItem` added to `JS_TAINTED_PATTERNS` — fixes DOMPropagation-style taint flows where attacker data is written to and read back from global DOM properties
+- **CWE-94 code injection sinks (13 new entries)**:
+  - **Apache Commons JEXL**: `JexlEngine.createExpression`, `JexlEngine.createScript`, `JexlExpression.evaluate`, `JexlScript.execute`
+  - **Janino expression evaluator** (Calcite/Flink/Drill): `ExpressionEvaluator.createFastEvaluator`/`cook`, `ScriptEvaluator.cook`, `ClassBodyEvaluator.cook`, `SimpleCompiler.cook`
+  - **Apache Camel Simple language** (CVE-2018-8041): `SimpleLanguage.createExpression`, `SimpleLanguage.createPredicate`
+  - **Thymeleaf StandardExpression** (CVE-2023-38286): `StandardExpressionParser.parseExpression`, `StandardExpression.getValue`
+  - **FreeMarker direct template construction** (CVE-2022-26336): `new Template(name, tainted)`, `Configuration.getTemplate`
+  - **Jinjava (Java Jinja template engine)**: `Jinjava.render`, `Jinjava.renderForResult`
+  - **Spring Cloud Function** (CVE-2022-22963): `RoutingFunction.getRequestedBeanName`
+  - **Kotlin reflection**: `KClass.createInstance`, `KFunction.callBy`
+  - **Struts 2 deep injection** (CVE-2017-5638): `TextParseUtil.translateVariables`, `StrutsResultSupport.evaluate`
+
+[3.18.8]: https://github.com/cogniumhq/circle-ir/compare/v3.18.7...v3.18.8
+
 ## [3.18.7] - 2026-04-15
 
 ### Added
