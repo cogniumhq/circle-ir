@@ -11,6 +11,7 @@ import type {
   SourcePattern,
   SinkPattern,
   SanitizerPattern,
+  HeaderRule,
 } from '../types/config.js';
 
 /**
@@ -1823,3 +1824,112 @@ export function getDefaultConfig(): TaintConfig {
     sanitizers: DEFAULT_SANITIZERS,
   };
 }
+
+// ============================================================================
+// Security Headers Rules (consumed by SecurityHeadersPass)
+// ============================================================================
+
+/**
+ * Default rule table for HTTP response security headers. Each rule is
+ * evaluated against setHeader/addHeader calls and (for kind='missing')
+ * against the absence of any such call on handler files.
+ *
+ * Covers clickjacking (CWE-1021) and CORS misconfiguration (CWE-346 /
+ * CWE-942). Adding a new rule here is enough to surface a finding — no
+ * pass code changes required.
+ */
+export const DEFAULT_HEADER_RULES: HeaderRule[] = [
+  // -------------------------------------------------------------------------
+  // Clickjacking (CWE-1021)
+  // -------------------------------------------------------------------------
+
+  {
+    rule_id: 'missing-x-frame-options',
+    cwe: 'CWE-1021',
+    level: 'warning',
+    severity: 'medium',
+    header: 'X-Frame-Options',
+    kind: 'missing',
+    requiresHandler: true,
+    message: 'HTTP handler does not set X-Frame-Options — vulnerable to clickjacking',
+    fix: "Set response.setHeader('X-Frame-Options', 'DENY') or use a CSP frame-ancestors directive",
+    note: 'Defense against UI redress / clickjacking attacks',
+  },
+
+  {
+    rule_id: 'x-frame-options-allow-from',
+    cwe: 'CWE-1021',
+    level: 'warning',
+    severity: 'medium',
+    header: 'X-Frame-Options',
+    kind: 'weak-value',
+    valuePattern: /^allow-from\b/i,
+    message: 'X-Frame-Options: ALLOW-FROM is deprecated and unsupported by modern browsers',
+    fix: "Use CSP frame-ancestors directive instead: Content-Security-Policy: frame-ancestors 'self'",
+  },
+
+  {
+    rule_id: 'missing-csp-frame-ancestors',
+    cwe: 'CWE-1021',
+    level: 'note',
+    severity: 'low',
+    header: 'Content-Security-Policy',
+    kind: 'missing',
+    requiresHandler: true,
+    message: 'HTTP handler does not set Content-Security-Policy — frame-ancestors unset',
+    fix: "Set Content-Security-Policy: frame-ancestors 'self' for defense-in-depth clickjacking protection",
+    note: 'Informational; paired with missing-x-frame-options',
+  },
+
+  // -------------------------------------------------------------------------
+  // CORS Misconfiguration (CWE-346, CWE-942)
+  // -------------------------------------------------------------------------
+
+  {
+    rule_id: 'cors-wildcard-origin',
+    cwe: 'CWE-942',
+    level: 'error',
+    severity: 'high',
+    header: 'Access-Control-Allow-Origin',
+    kind: 'weak-value',
+    valuePattern: /^\*$/,
+    message: "Access-Control-Allow-Origin: '*' permits cross-origin requests from any site",
+    fix: 'Restrict to a specific trusted origin or use an allowlist',
+  },
+
+  {
+    rule_id: 'cors-null-origin',
+    cwe: 'CWE-346',
+    level: 'error',
+    severity: 'high',
+    header: 'Access-Control-Allow-Origin',
+    kind: 'weak-value',
+    valuePattern: /^null$/i,
+    message: "Access-Control-Allow-Origin: 'null' is exploitable via sandboxed iframes and data: URIs",
+    fix: 'Restrict to a specific trusted origin',
+  },
+
+  {
+    rule_id: 'cors-http-origin',
+    cwe: 'CWE-346',
+    level: 'warning',
+    severity: 'medium',
+    header: 'Access-Control-Allow-Origin',
+    kind: 'weak-value',
+    valuePattern: /^http:\/\//i,
+    message: 'Access-Control-Allow-Origin uses insecure http:// scheme',
+    fix: 'Use https:// for the allowed origin',
+  },
+
+  {
+    rule_id: 'cors-reflected-origin',
+    cwe: 'CWE-346',
+    level: 'error',
+    severity: 'high',
+    header: 'Access-Control-Allow-Origin',
+    kind: 'unsafe-value',
+    message: 'Access-Control-Allow-Origin set to a dynamic value — possible origin reflection',
+    fix: 'Validate the Origin request header against an allowlist before echoing it back',
+    note: 'Fires when the value is not a string literal (likely reflected from request)',
+  },
+];

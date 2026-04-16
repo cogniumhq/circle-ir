@@ -139,6 +139,10 @@ Numbers follow COGNIUM_IMPLEMENTATION_GUIDE §10 Week 12-14.
 - [x] **#64 `missing-override`** (—) — method matches supertype signature, lacks `@Override` (done in v3.11.0)
 - [x] **#66 `unused-interface-method`** (—) — interface method never called through that interface (done in v3.11.0)
 
+### Security passes (table-driven, no taint graph)
+
+- [x] **#89 `security-headers`** (CWE-1021, CWE-346, CWE-942) — inspects `setHeader`/`addHeader`/`set`/`header`/`insert_header` call sites + handler presence. Table-driven rules in `DEFAULT_HEADER_RULES` cover clickjacking (missing X-Frame-Options, ALLOW-FROM, missing CSP frame-ancestors) and CORS misconfiguration (wildcard, null, http origin, reflected origin). Overridable via `passOptions.securityHeaders.rules`. (done in v3.19.0)
+
 ---
 
 ## Ongoing: Architecture Improvements

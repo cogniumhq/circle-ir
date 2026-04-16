@@ -2,7 +2,7 @@
  * Types for YAML configuration files (configs/sources/, configs/sinks/)
  */
 
-import type { Severity, SinkType, SourceType } from './index.js';
+import type { SarifLevel, Severity, SinkType, SourceType } from './index.js';
 
 // =============================================================================
 // Source Configuration (configs/sources/*.yaml)
@@ -70,4 +70,53 @@ export interface TaintConfig {
   sources: SourcePattern[];
   sinks: SinkPattern[];
   sanitizers: SanitizerPattern[];
+}
+
+// =============================================================================
+// Security Headers Rules
+// =============================================================================
+
+/**
+ * A rule evaluated by SecurityHeadersPass against HTTP response header
+ * writes (setHeader/addHeader) and handler presence. Emits SastFindings
+ * without going through the taint source→sink machinery, since headers
+ * are a call-site literal inspection problem, not a data-flow problem.
+ */
+export interface HeaderRule {
+  /** Rule id (matches docs/PASSES.md rule_id column). */
+  rule_id: string;
+  /** CWE identifier (e.g. 'CWE-1021', 'CWE-346', 'CWE-942'). */
+  cwe: string;
+  /** SARIF level: 'error' | 'warning' | 'note' | 'none'. */
+  level: SarifLevel;
+  /** Severity bucket: 'critical' | 'high' | 'medium' | 'low'. */
+  severity: Severity;
+  /** HTTP response header this rule applies to (case-insensitive). */
+  header: string;
+  /**
+   * Rule kind:
+   *  - 'missing'       → file has an HTTP handler but never writes this header
+   *  - 'weak-value'    → header written with a value matching `matcher`
+   *                      (e.g. 'ALLOW-FROM', 'null', 'http://…')
+   *  - 'unsafe-value'  → value is dynamic / reflected (not a string literal)
+   */
+  kind: 'missing' | 'weak-value' | 'unsafe-value';
+  /**
+   * Value pattern for 'weak-value' rules. Matched against the literal
+   * second argument of setHeader/addHeader (case-insensitive).
+   */
+  valuePattern?: RegExp;
+  /**
+   * If true (the default for kind='missing'), the rule only fires when
+   * the file contains at least one HTTP handler (annotated controller
+   * method, Express/Koa route, Rust extractor, etc.). Prevents noise on
+   * library code, configuration files, and tests.
+   */
+  requiresHandler?: boolean;
+  /** Human-readable message (header name interpolated with ${header}). */
+  message: string;
+  /** Suggested fix rendered into SastFinding.fix. */
+  fix?: string;
+  /** Optional note for PASSES.md / debugging. */
+  note?: string;
 }

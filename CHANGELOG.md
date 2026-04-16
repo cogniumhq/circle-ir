@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.19.0] - 2026-04-16
+
+### Added
+
+- **Pass #89: `security-headers`** (category: `security`) — inspects HTTP response-header writes (`setHeader`/`addHeader`/`set`/`header`/`insert_header`) and handler presence to detect clickjacking (CWE-1021) and CORS misconfiguration (CWE-346 / CWE-942). Table-driven rules defined in `DEFAULT_HEADER_RULES` (`config-loader.ts`), overridable via `passOptions.securityHeaders.rules`.
+  - `missing-x-frame-options` (CWE-1021, warning) — HTTP handler does not set `X-Frame-Options`
+  - `x-frame-options-allow-from` (CWE-1021, warning) — `ALLOW-FROM` is deprecated and unsupported by modern browsers
+  - `missing-csp-frame-ancestors` (CWE-1021, note) — HTTP handler does not set `Content-Security-Policy`
+  - `cors-wildcard-origin` (CWE-942, error) — `Access-Control-Allow-Origin: *`
+  - `cors-null-origin` (CWE-346, error) — `Access-Control-Allow-Origin: null` (exploitable via sandboxed iframes)
+  - `cors-http-origin` (CWE-346, warning) — allowed origin uses insecure `http://` scheme
+  - `cors-reflected-origin` (CWE-346, error) — `Access-Control-Allow-Origin` set to a dynamic (non-literal) value
+- **New public type `HeaderRule`** in `src/types/config.ts` — declarative rule shape consumed by `SecurityHeadersPass`.
+- **`passOptions.securityHeaders`** — override the default rule table at `analyze()` time.
+
+### Architecture
+
+- Security Headers analysis is a call-site literal inspection problem, not a data-flow problem. The pass reads `graph.ir.calls` + `graph.ir.types[].annotations` directly and does NOT participate in the taint source→sink machinery. Handler detection is heuristic and cross-language (Java/Kotlin annotations, Express/Koa routers, Python/Flask decorators, Rust attribute macros).
+
+[3.19.0]: https://github.com/cogniumhq/circle-ir/compare/v3.18.8...v3.19.0
+
 ## [3.18.8] - 2026-04-16
 
 ### Added

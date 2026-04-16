@@ -73,6 +73,24 @@ Attribute-level checks on HTML AST. No IR/taint graph required.
 | H7 | `html-inline-event-handler` | CWE-79 | note | shipped | Inline `on*` handler (CSP incompatible) |
 | H8 | `html-form-action-javascript` | CWE-79 | error | shipped | `<form action="javascript:...">` |
 
+### A3. Security Headers Pass (category = `security`)
+
+Pass #89 `security-headers` inspects HTTP response-header writes
+(`setHeader`/`addHeader`/`set`/`header`/`insert_header`) and handler presence.
+Emits findings for clickjacking (CWE-1021) and CORS misconfiguration
+(CWE-346 / CWE-942). Rule table is defined in `config-loader.ts` as
+`DEFAULT_HEADER_RULES` and overridable via `passOptions.securityHeaders.rules`.
+
+| # | rule_id | CWE | level | status | Description |
+|---|---------|-----|-------|--------|-------------|
+| 89a | `missing-x-frame-options` | CWE-1021 | warning | shipped | HTTP handler does not set `X-Frame-Options` |
+| 89b | `x-frame-options-allow-from` | CWE-1021 | warning | shipped | `X-Frame-Options: ALLOW-FROM` is deprecated and browser-unsupported |
+| 89c | `missing-csp-frame-ancestors` | CWE-1021 | note | shipped | HTTP handler does not set `Content-Security-Policy` |
+| 89d | `cors-wildcard-origin` | CWE-942 | error | shipped | `Access-Control-Allow-Origin: *` permits cross-origin from any site |
+| 89e | `cors-null-origin` | CWE-346 | error | shipped | `Access-Control-Allow-Origin: null` exploitable via sandboxed iframes |
+| 89f | `cors-http-origin` | CWE-346 | warning | shipped | Allowed origin uses insecure `http://` scheme |
+| 89g | `cors-reflected-origin` | CWE-346 | error | shipped | `Access-Control-Allow-Origin` set to a dynamic (non-literal) value |
+
 ---
 
 ## B. Reliability Passes (category = `reliability`)

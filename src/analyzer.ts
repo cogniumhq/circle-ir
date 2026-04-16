@@ -125,6 +125,7 @@ import { ExcessiveAllocationPass } from './analysis/passes/excessive-allocation-
 import { MissingStreamPass } from './analysis/passes/missing-stream-pass.js';
 import { GodClassPass } from './analysis/passes/god-class-pass.js';
 import { NamingConventionPass, type NamingConventionOptions } from './analysis/passes/naming-convention-pass.js';
+import { SecurityHeadersPass, type SecurityHeadersOptions } from './analysis/passes/security-headers-pass.js';
 
 // Project-level pass imports
 import { ImportGraph } from './graph/import-graph.js';
@@ -195,6 +196,8 @@ export interface PassOptions {
   dependencyFanOut?: DependencyFanOutOptions;
   /** Options for UnboundedCollectionPass (#31). */
   unboundedCollection?: UnboundedCollectionOptions;
+  /** Options for SecurityHeadersPass (#89). */
+  securityHeaders?: SecurityHeadersOptions;
 }
 
 let initialized = false;
@@ -426,6 +429,7 @@ export async function analyze(
   if (!disabledPasses.has('missing-stream'))        pipeline.add(new MissingStreamPass());
   if (!disabledPasses.has('god-class'))             pipeline.add(new GodClassPass());
   if (!disabledPasses.has('naming-convention'))     pipeline.add(new NamingConventionPass(passOpts.namingConvention));
+  if (!disabledPasses.has('security-headers'))      pipeline.add(new SecurityHeadersPass(passOpts.securityHeaders));
 
   // Run the pipeline
   const { results, findings } = pipeline.run(graph, code, language, config);
