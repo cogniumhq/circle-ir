@@ -69,7 +69,7 @@ For detailed architecture, see:
 - `src/analysis/html/` - HTML web extraction preprocessor (script extraction, attribute security checks, result merging)
 - `src/graph/` - CodeGraph (lazy indexes), AnalysisPipeline, ProjectGraph, analysis-pass interface
 - `src/types/` - TypeScript type definitions (`SastFinding`, `MetricValue`, `PassCategory`, …)
-- `src/languages/` - Language plugins (Java, JavaScript, Python, Rust, Bash, HTML)
+- `src/languages/` - Language plugins (Java, JavaScript, Python, Go, Rust, Bash, HTML)
 - `src/resolution/` - Cross-file resolution, SymbolTable, TypeHierarchyResolver
 - Entry point: `src/browser.ts` (browser-specific initialization)
 
@@ -202,7 +202,7 @@ When reviewing or modifying circle-ir, verify these requirements:
 
 ## Language Support
 
-**Supported Languages**: Java, JavaScript/TypeScript, Python, Rust, Bash/Shell, HTML
+**Supported Languages**: Java, JavaScript/TypeScript, Python, Go, Rust, Bash/Shell, HTML
 
 For detailed status, benchmark scores, and pending improvements, see [TODO.md](TODO.md#language-support).
 

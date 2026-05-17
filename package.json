@@ -54,6 +54,8 @@
     "javascript",
     "typescript",
     "python",
+    "go",
+    "golang",
     "rust",
     "bash",
     "shell",

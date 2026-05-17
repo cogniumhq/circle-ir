@@ -8,7 +8,7 @@ A high-performance Static Application Security Testing (SAST) library for detect
 ## Features
 
 - **Taint Analysis**: Track data flow from sources (user input) to sinks (dangerous operations)
-- **Multi-language Support**: Java, JavaScript/TypeScript, Python, Rust, Bash/Shell, HTML
+- **Multi-language Support**: Java, JavaScript/TypeScript, Python, Go, Rust, Bash/Shell, HTML
 - **High Accuracy**: 100% on OWASP Benchmark, 100% on Juliet Test Suite, 97.7% TPR on SecuriBench Micro
 - **36-Pass Pipeline**: 19 security taint passes + 17 reliability/performance/maintainability/architecture quality passes
 - **Metrics Engine**: 24 software quality metrics (cyclomatic complexity, Halstead, CBO, RFC, LCOM, DIT, and 4 composite scores)
@@ -205,6 +205,7 @@ const response = await analyzeForAPI(code, 'File.java', 'java');
 | **Java** | tree-sitter-java | Spring, JAX-RS, Servlet API |
 | **JavaScript/TypeScript** | tree-sitter-javascript | Express, Fastify, Koa, Node.js |
 | **Python** | tree-sitter-python | Flask, Django, FastAPI |
+| **Go** | tree-sitter-go | net/http, Gin, Echo, Fiber, Chi |
 | **Rust** | tree-sitter-rust | Actix-web, Rocket, Axum |
 | **Bash/Shell** | tree-sitter-bash | Shell scripts (.sh, .bash, .zsh, .ksh) |
 | **HTML** | tree-sitter-html | Web extraction preprocessor (.html, .htm, .xhtml) |
@@ -219,6 +220,9 @@ const jsResult = await analyze(jsCode, 'server.js', 'javascript');
 
 // Analyze Python
 const pyResult = await analyze(pyCode, 'app.py', 'python');
+
+// Analyze Go
+const goResult = await analyze(goCode, 'main.go', 'go');
 
 // Analyze Rust
 const rsResult = await analyze(rsCode, 'main.rs', 'rust');
